@@ -11,8 +11,13 @@ from typing import Optional
 from app.models import Account, Recipient, TransactionRecord
 
 accounts: dict[str, Account] = {
-    "mama-aisha": Account(id="mama-aisha", name="Mama Aisha", preferredLanguage="yo", balance=85000)
+    "mama-aisha": Account(
+        id="mama-aisha", name="Mama Aisha", preferredLanguage="yo", balance=85000,
+        cardNumber="5060 0000 0000 0001",
+    )
 }
+
+accounts_by_card: dict[str, str] = {"5060000000000001": "mama-aisha"}
 
 recipients: dict[str, Recipient] = {
     "adewale": Recipient(name="Adewale", account="0123456789"),
@@ -51,20 +56,40 @@ def create_transaction_record(
 STARTING_BALANCE = 50000
 
 
+def _normalize_card(card_number: str) -> str:
+    return card_number.replace(" ", "").replace("-", "")
+
+
+def _generate_card_number() -> str:
+    while True:
+        digits = "".join(str(random.randint(0, 9)) for _ in range(12))
+        normalized = "5060" + digits
+        if normalized not in accounts_by_card:
+            return " ".join(normalized[i:i + 4] for i in range(0, 16, 4))
+
+
 def create_account(user_id: str, name: str, preferred_language: str, address: Optional[str] = None) -> Account:
+    card_number = _generate_card_number()
     account = Account(
         id=user_id,
         name=name,
         preferredLanguage=preferred_language,
         balance=STARTING_BALANCE,
         address=address,
+        cardNumber=card_number,
     )
     accounts[user_id] = account
+    accounts_by_card[_normalize_card(card_number)] = user_id
     return account
 
 
 def get_account(user_id: str) -> Optional[Account]:
     return accounts.get(user_id)
+
+
+def get_account_by_card(card_number: str) -> Optional[Account]:
+    user_id = accounts_by_card.get(_normalize_card(card_number))
+    return accounts.get(user_id) if user_id else None
 
 
 def get_transaction(tx_id: str) -> Optional[TransactionRecord]:

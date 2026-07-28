@@ -193,6 +193,14 @@ def accounts_register(body: AccountRegisterBody):
     return account
 
 
+@app.get("/api/accounts/by-card/{card_number}")
+def accounts_get_by_card(card_number: str):
+    account = store.get_account_by_card(card_number)
+    if not account:
+        raise HTTPException(status_code=404, detail={"error": "CARD_NOT_RECOGNIZED"})
+    return account
+
+
 @app.get("/api/accounts/{account_id}")
 def accounts_get(account_id: str):
     account = store.get_account(account_id)

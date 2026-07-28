@@ -28,6 +28,7 @@ export default function Onboarding() {
   const [voiceSamples, setVoiceSamples] = useState<number[][]>([]);
   const [voiceRound, setVoiceRound] = useState(1);
   const [challenge, setChallenge] = useState<{ digits: string; spoken: string } | null>(null);
+  const [cardNumber, setCardNumber] = useState("");
 
   const recorderRef = useRef<{ stop: () => void; result: Promise<Blob> } | null>(null);
   const lang = LANGUAGES[langIdx].code;
@@ -87,7 +88,8 @@ export default function Onboarding() {
     setSubmitError("");
     setStatus("Creating your account...");
     try {
-      await registerAccount({ userId, fullName, address, language: lang });
+      const account = await registerAccount({ userId, fullName, address, language: lang });
+      setCardNumber(account.cardNumber || "");
       await registerVoice(userId, averageVectors(voiceSamples));
       speak(phrase(lang, "enrollmentComplete"), lang);
       setStatus("");
@@ -178,8 +180,15 @@ export default function Onboarding() {
           {step === "done" && (
             <>
               <div style={s.reviewCard}>
-                <div style={{ textAlign: "center", fontSize: 15, color: "var(--indigo)", fontWeight: 600 }}>✓ {fullName}, your account is ready.</div>
+                <div style={{ textAlign: "center", fontSize: 15, color: "var(--indigo)", fontWeight: 600, marginBottom: 10 }}>✓ {fullName}, your account is ready.</div>
+                {cardNumber && (
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ fontSize: 11, color: "#8a8175", textTransform: "uppercase", letterSpacing: "0.05em" }}>Your virtual card</div>
+                    <div style={{ fontFamily: "monospace", fontSize: 17, color: "var(--charcoal)", letterSpacing: "0.05em" }}>{cardNumber}</div>
+                  </div>
+                )}
               </div>
+              <div style={s.mockNote}>Insert this card number at the virtual POS to sign in — no need to remember your phone number.</div>
               <button style={{ ...s.btn, ...s.btnPrimary, width: "100%", marginTop: 14 }} onClick={() => navigate("/app")}>Go to virtual POS</button>
             </>
           )}

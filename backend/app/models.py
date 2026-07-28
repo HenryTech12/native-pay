@@ -50,6 +50,7 @@ class Account(BaseModel):
     preferredLanguage: str
     balance: int
     address: Optional[str] = None
+    cardNumber: Optional[str] = None
 
 
 class Recipient(BaseModel):

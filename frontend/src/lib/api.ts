@@ -127,6 +127,11 @@ export async function getAccount(userId: string): Promise<AccountProfile> {
   return asJson(res);
 }
 
+export async function getAccountByCard(cardNumber: string): Promise<AccountProfile> {
+  const res = await fetch(`${API_BASE}/api/accounts/by-card/${encodeURIComponent(cardNumber)}`);
+  return asJson(res);
+}
+
 export async function getTransaction(id: string): Promise<TransactionRecord> {
   const res = await fetch(`${API_BASE}/api/transactions/${id}`);
   return asJson(res);
