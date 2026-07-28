@@ -4,11 +4,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from app.services import bmoni_service, groq_service, store, transaction_service, voice_auth
+from app.services import bmoni_service, groq_service, store, transaction_service, voice_auth, yarngpt_service
 from app.services.languages import supported_languages
 from app.services.transaction_service import STATES
 
@@ -30,6 +30,20 @@ def health():
 @app.get("/api/languages")
 def languages():
     return supported_languages()
+
+
+class TtsBody(BaseModel):
+    text: str
+    language: str = "en"
+
+
+@app.post("/api/tts")
+async def tts(body: TtsBody):
+    try:
+        audio = await yarngpt_service.synthesize_speech(body.text, body.language)
+        return Response(content=audio, media_type="audio/mpeg")
+    except Exception as err:
+        raise HTTPException(status_code=502, detail={"error": "TTS_UNAVAILABLE", "message": str(err)})
 
 
 @app.post("/api/voice/process")

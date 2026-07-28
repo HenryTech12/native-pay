@@ -75,7 +75,7 @@ export default function App() {
     const c = generateChallenge(lang);
     setChallenge(c);
     setStep("auth");
-    speak(phrase(lang, "askRepeatDigits", c.spoken));
+    speak(phrase(lang, "askRepeatDigits", c.spoken), lang);
   }
 
   async function toggleAuthRecording() {
@@ -95,13 +95,13 @@ export default function App() {
         if (result.authorized) {
           try {
             const account = await getAccount(userId);
-            speak(phrase(lang, "welcomeBack", account.name));
+            speak(phrase(lang, "welcomeBack", account.name), lang);
           } catch {
             /* welcome message is a nicety — proceed either way */
           }
           setStep("listen");
         } else {
-          speak(phrase(lang, "voiceAuthStepUp"));
+          speak(phrase(lang, "voiceAuthStepUp"), lang);
           setStep("faceAuth");
         }
       } catch {
@@ -118,7 +118,7 @@ export default function App() {
       setStep("listen");
       return;
     }
-    speak(phrase(LANGUAGES[langIdx].code, "voiceAuthFailed"));
+    speak(phrase(LANGUAGES[langIdx].code, "voiceAuthFailed"), LANGUAGES[langIdx].code);
     setStep("authFailed");
   }
 
@@ -156,7 +156,7 @@ export default function App() {
   async function handleIntent(intent: { action: Action; amount: number | null; recipient: string | null; confidence: number }) {
     if (intent.action === "balance") {
       const b = await getBalance(userId);
-      speak(phrase(LANGUAGES[langIdx].code, "balance", b.balance));
+      speak(phrase(LANGUAGES[langIdx].code, "balance", b.balance), LANGUAGES[langIdx].code);
       setBalance(b.balance);
       setStep("balance");
       return;
@@ -179,7 +179,7 @@ export default function App() {
       const say = created.action === "send"
         ? phrase(lang, "confirmSend", created.amount || 0, created.recipient || "")
         : phrase(lang, "confirmWithdraw", created.amount || 0);
-      speak(say);
+      speak(say, lang);
       setStep("confirm");
       return;
     }
@@ -228,7 +228,7 @@ export default function App() {
     const lang = LANGUAGES[langIdx].code;
     speak(sent.action === "send"
       ? phrase(lang, "successSend", sent.amount || 0, sent.recipient || "")
-      : phrase(lang, "successWithdraw", sent.amount || 0));
+      : phrase(lang, "successWithdraw", sent.amount || 0), lang);
     setStep("receipt");
   }
 

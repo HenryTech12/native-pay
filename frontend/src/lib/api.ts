@@ -19,6 +19,16 @@ async function asJson<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export async function synthesizeSpeech(text: string, language: string): Promise<Blob> {
+  const res = await fetch(`${API_BASE}/api/tts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, language })
+  });
+  if (!res.ok) throw new Error("TTS_UNAVAILABLE");
+  return res.blob();
+}
+
 export async function voiceProcess(blob: Blob, languageCode?: string): Promise<{ text: string; intent: ParsedIntent }> {
   const form = new FormData();
   form.append("audio", blob, "clip.webm");

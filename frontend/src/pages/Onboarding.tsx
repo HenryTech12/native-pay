@@ -33,15 +33,15 @@ export default function Onboarding() {
   const lang = LANGUAGES[langIdx].code;
 
   useEffect(() => {
-    if (step === "name") speak(phrase(lang, "askFullName"));
-    if (step === "address") speak(phrase(lang, "askAddress"));
+    if (step === "name") speak(phrase(lang, "askFullName"), lang);
+    if (step === "address") speak(phrase(lang, "askAddress"), lang);
   }, [step]);
 
   useEffect(() => {
     if (step === "voiceprint") {
       const c = generateChallenge(lang);
       setChallenge(c);
-      speak(phrase(lang, "askRepeatDigits", c.spoken));
+      speak(phrase(lang, "askRepeatDigits", c.spoken), lang);
     }
   }, [step, voiceRound]);
 
@@ -89,7 +89,7 @@ export default function Onboarding() {
     try {
       await registerAccount({ userId, fullName, address, language: lang });
       await registerVoice(userId, averageVectors(voiceSamples));
-      speak(phrase(lang, "enrollmentComplete"));
+      speak(phrase(lang, "enrollmentComplete"), lang);
       setStatus("");
       setStep("done");
     } catch (err) {
