@@ -43,7 +43,7 @@ const T: Record<string, Phrases> = {
     enrollmentComplete: () => "You don set. You fit dey use NativePay with your voice now."
   },
   yo: {
-    confirmSend: (a, n) => `O fẹ́ fi ẹgbẹ̀rún ${a} ránṣẹ́ sí ${n}. Ṣé kí n tẹ̀síwájú?`,
+    confirmSend: (a, n) => `O fẹ́ fi ${a} náírà ránṣẹ́ sí ${n}. Ṣé kí n tẹ̀síwájú?`,
     confirmWithdraw: (a) => `O fẹ́ yọ ${a} náírà kúrò. Ṣé kí n tẹ̀síwájú?`,
     successSend: (a, n) => `A ti fi ${a} náírà ránṣẹ́ sí ${n} ní àṣeyọrí.`,
     successWithdraw: (a) => `Yíyọ ${a} náírà ṣàṣeyọrí.`,
