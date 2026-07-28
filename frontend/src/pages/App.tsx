@@ -2,13 +2,17 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   voiceProcess, confirmCreate, confirmAdvance, cancelTransaction,
-  verifyFace, sendTransaction, getReceipt, getBalance, registerVoice
+  verifyFace, sendTransaction, getReceipt, getBalance,
+  authorizeVoice, getVoiceStatus, getAccount
 } from "../lib/api";
 import { recordAudio, blobToMfccVector } from "../lib/audio";
+import { generateChallenge } from "../lib/challenge";
 import { phrase, speak, LANGUAGES } from "../lib/phrases";
 import type { TransactionRecord, Receipt, Action } from "../types";
 
-type Step = "register" | "listen" | "confirm" | "clarify" | "error" | "face" | "processing" | "balance" | "receipt";
+type Step =
+  | "start" | "auth" | "faceAuth" | "authFailed"
+  | "listen" | "confirm" | "clarify" | "error" | "face" | "processing" | "balance" | "receipt";
 
 const ERROR_MESSAGES: Record<string, string> = {
   INVALID_AMOUNT: "That amount doesn't look right. Please say an amount greater than zero.",
@@ -21,7 +25,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 };
 
 export default function App() {
-  const [step, setStep] = useState<Step>("register");
+  const [step, setStep] = useState<Step>("start");
   const [userId, setUserId] = useState("mama-aisha");
   const [langIdx, setLangIdx] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
@@ -30,13 +34,15 @@ export default function App() {
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [errorCode, setErrorCode] = useState<string>("default");
-  const [regStatus, setRegStatus] = useState("");
+
+  const [challenge, setChallenge] = useState<{ digits: string; spoken: string } | null>(null);
+  const [authStatus, setAuthStatus] = useState("");
 
   const recorderRef = useRef<{ stop: () => void; result: Promise<Blob> } | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
-    if (step === "face" && videoRef.current) {
+    if ((step === "face" || step === "faceAuth") && videoRef.current) {
       navigator.mediaDevices.getUserMedia({ video: true })
         .then((stream) => { if (videoRef.current) videoRef.current.srcObject = stream; })
         .catch(() => {});
@@ -53,24 +59,67 @@ export default function App() {
     setStep("listen");
   }
 
-  async function toggleRegisterRecording() {
-    if (!isRecording) {
-      setIsRecording(true);
-      setRegStatus("Listening... tap again to stop.");
-      const rec = await recordAudio();
-      recorderRef.current = rec;
-      rec.result.then(async (blob) => {
-        setIsRecording(false);
-        setRegStatus("Processing your voice sample...");
-        const vector = await blobToMfccVector(blob);
-        if (!vector) { setRegStatus("Couldn't read that clip — try again."); return; }
-        await registerVoice(userId, vector);
-        setRegStatus("Voice registered ✓");
-        setTimeout(() => setStep("listen"), 600);
-      });
-    } else {
-      recorderRef.current?.stop();
+  async function beginAuth() {
+    setAuthStatus("");
+    const lang = LANGUAGES[langIdx].code;
+    try {
+      const { registered } = await getVoiceStatus(userId);
+      if (!registered) {
+        setStep("faceAuth");
+        return;
+      }
+    } catch {
+      setAuthStatus("Couldn't reach the backend — check it's running.");
+      return;
     }
+    const c = generateChallenge(lang);
+    setChallenge(c);
+    setStep("auth");
+    speak(phrase(lang, "askRepeatDigits", c.spoken));
+  }
+
+  async function toggleAuthRecording() {
+    if (isRecording) { recorderRef.current?.stop(); return; }
+    setIsRecording(true);
+    setAuthStatus("Listening... tap again to stop.");
+    const rec = await recordAudio();
+    recorderRef.current = rec;
+    rec.result.then(async (blob) => {
+      setIsRecording(false);
+      setAuthStatus("Checking your voice...");
+      const vector = await blobToMfccVector(blob);
+      if (!vector) { setAuthStatus("Couldn't hear that clearly — try again."); return; }
+      try {
+        const lang = LANGUAGES[langIdx].code;
+        const result = await authorizeVoice(userId, vector);
+        if (result.authorized) {
+          try {
+            const account = await getAccount(userId);
+            speak(phrase(lang, "welcomeBack", account.name));
+          } catch {
+            /* welcome message is a nicety — proceed either way */
+          }
+          setStep("listen");
+        } else {
+          speak(phrase(lang, "voiceAuthStepUp"));
+          setStep("faceAuth");
+        }
+      } catch {
+        setAuthStatus("Couldn't reach the backend — check it's running and try again.");
+      }
+    });
+  }
+
+  async function onAuthFaceResult(matched: boolean) {
+    if (videoRef.current?.srcObject) {
+      (videoRef.current.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
+    }
+    if (matched) {
+      setStep("listen");
+      return;
+    }
+    speak(phrase(LANGUAGES[langIdx].code, "voiceAuthFailed"));
+    setStep("authFailed");
   }
 
   async function toggleListenRecording() {
@@ -194,7 +243,10 @@ export default function App() {
   }
 
   const titles: Record<Step, [string, string]> = {
-    register: ["Register your voice", "One short phrase, spoken once, for faster future confirmations."],
+    start: ["NativePay", "Enter your phone number and pick your language to begin."],
+    auth: ["Verify it's you", "Repeat the numbers you hear."],
+    faceAuth: ["One more check", "A quick face check confirms it's you."],
+    authFailed: ["Couldn't verify you", "Please speak with the agent for help."],
     listen: ["NativePay", "Tap and speak — or try a quick demo phrase."],
     confirm: ["Confirm", "Check the details before continuing."],
     clarify: ["One more thing", "I need a bit more detail."],
@@ -219,15 +271,47 @@ export default function App() {
         </header>
 
         <main style={s.main}>
-          {step === "register" && (
+          {step === "start" && (
             <>
-              <label style={s.label}>Name or phone number</label>
+              <label style={s.label}>Phone number or name</label>
               <input style={s.input} value={userId} onChange={(e) => setUserId(e.target.value)} />
+              <div style={s.langRow}>
+                {LANGUAGES.map((l, i) => (
+                  <div key={l.code + i} style={{ ...s.langChip, ...(i === langIdx ? s.langChipActive : {}) }} onClick={() => setLangIdx(i)}>{l.label}</div>
+                ))}
+              </div>
               <div style={s.micStage}>
-                <button style={{ ...s.micBtn, ...(isRecording ? s.micBtnRecording : {}) }} onClick={toggleRegisterRecording}>🎤</button>
-                <div style={s.hint}>Tap, then say: <em>"This is my voice for NativePay."</em></div>
-                <div style={s.hint}>{regStatus}</div>
-                <div style={s.quickRow}><span style={s.quickBtn} onClick={() => setStep("listen")}>Skip for now</span></div>
+                <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} disabled={!userId.trim()} onClick={beginAuth}>Continue</button>
+                <div style={s.hint}>New here? <Link to="/onboarding" style={{ color: "var(--indigo)", fontWeight: 700 }}>Create an account</Link></div>
+              </div>
+            </>
+          )}
+
+          {step === "auth" && challenge && (
+            <div style={s.micStage}>
+              <div style={s.transcript}>{challenge.spoken}</div>
+              <div style={s.hint}>Listen, then tap and repeat these numbers back.</div>
+              <button style={{ ...s.micBtn, ...(isRecording ? s.micBtnRecording : {}) }} onClick={toggleAuthRecording}>🎤</button>
+              <div style={s.hint}>{authStatus}</div>
+            </div>
+          )}
+
+          {step === "faceAuth" && (
+            <div style={s.faceStage}>
+              <video ref={videoRef} autoPlay playsInline muted style={s.video} />
+              <div style={s.mockNote}>Camera capture is real. Match/no-match is simulated for the demo — swap in a real verification provider before production use.</div>
+              <div style={{ ...s.actionRow, width: "100%" }}>
+                <button style={{ ...s.btn, ...s.btnGhost }} onClick={() => onAuthFaceResult(false)}>Simulate: no match</button>
+                <button style={{ ...s.btn, ...s.btnGold }} onClick={() => onAuthFaceResult(true)}>Simulate: match ✓</button>
+              </div>
+            </div>
+          )}
+
+          {step === "authFailed" && (
+            <>
+              <div style={s.errorCard}>We couldn't verify it's you by voice or face. Please speak with the agent for help.</div>
+              <div style={s.actionRow}>
+                <button style={{ ...s.btn, ...s.btnPrimary, flex: 1 }} onClick={() => setStep("start")}>Try again</button>
               </div>
             </>
           )}

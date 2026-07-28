@@ -54,3 +54,29 @@ export interface Language {
   code: string;
   label: string;
 }
+
+export interface AccountProfile {
+  id: string;
+  name: string;
+  preferredLanguage: string;
+  balance: number;
+  address: string | null;
+}
+
+export interface AccountRegisterPayload {
+  userId: string;
+  fullName: string;
+  address: string;
+  language: string;
+}
+
+export interface VoiceStatus {
+  registered: boolean;
+}
+
+export interface VoiceAuthorizeResult {
+  authorized: boolean;
+  similarity?: number;
+  threshold?: number;
+  reason?: string;
+}
