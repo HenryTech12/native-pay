@@ -48,6 +48,25 @@ def create_transaction_record(
     return record
 
 
+STARTING_BALANCE = 50000
+
+
+def create_account(user_id: str, name: str, preferred_language: str, address: Optional[str] = None) -> Account:
+    account = Account(
+        id=user_id,
+        name=name,
+        preferredLanguage=preferred_language,
+        balance=STARTING_BALANCE,
+        address=address,
+    )
+    accounts[user_id] = account
+    return account
+
+
+def get_account(user_id: str) -> Optional[Account]:
+    return accounts.get(user_id)
+
+
 def get_transaction(tx_id: str) -> Optional[TransactionRecord]:
     return transactions.get(tx_id)
 

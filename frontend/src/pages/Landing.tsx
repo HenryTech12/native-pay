@@ -46,6 +46,7 @@ export default function Landing() {
         <div style={styles.logo}>NativePay</div>
         <div style={styles.navLinks}>
           <Link to="/pos" style={styles.posLink}>POS agent view</Link>
+          <Link to="/onboarding" style={styles.posLink}>Create account</Link>
           <Link to="/app" style={styles.cta}>Try the demo</Link>
         </div>
       </nav>

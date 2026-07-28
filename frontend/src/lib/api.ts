@@ -1,4 +1,7 @@
-import type { Action, ParsedIntent, Receipt, TransactionRecord } from "../types";
+import type {
+  Action, AccountProfile, AccountRegisterPayload, ParsedIntent, Receipt,
+  TransactionRecord, VoiceAuthorizeResult, VoiceStatus
+} from "../types";
 
 export const API_BASE = (import.meta.env.VITE_API_BASE as string) || "http://localhost:4000";
 
@@ -83,6 +86,34 @@ export async function registerVoice(userId: string, featureVector: number[]): Pr
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ userId, featureVector })
   });
+  return asJson(res);
+}
+
+export async function authorizeVoice(userId: string, featureVector: number[]): Promise<VoiceAuthorizeResult> {
+  const res = await fetch(`${API_BASE}/api/voice/authorize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, featureVector })
+  });
+  return asJson(res);
+}
+
+export async function getVoiceStatus(userId: string): Promise<VoiceStatus> {
+  const res = await fetch(`${API_BASE}/api/voice/status/${encodeURIComponent(userId)}`);
+  return asJson(res);
+}
+
+export async function registerAccount(payload: AccountRegisterPayload): Promise<AccountProfile> {
+  const res = await fetch(`${API_BASE}/api/accounts/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  return asJson(res);
+}
+
+export async function getAccount(userId: string): Promise<AccountProfile> {
+  const res = await fetch(`${API_BASE}/api/accounts/${encodeURIComponent(userId)}`);
   return asJson(res);
 }
 

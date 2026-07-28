@@ -164,6 +164,29 @@ def accounts_balance(account_id: str):
         raise HTTPException(status_code=500, detail={"error": "BMONI_API_ERROR", "message": str(err)})
 
 
+class AccountRegisterBody(BaseModel):
+    userId: str
+    fullName: str
+    address: str
+    language: str
+
+
+@app.post("/api/accounts/register")
+def accounts_register(body: AccountRegisterBody):
+    if store.get_account(body.userId):
+        raise HTTPException(status_code=409, detail={"error": "ACCOUNT_EXISTS"})
+    account = store.create_account(body.userId, body.fullName, body.language, body.address)
+    return account
+
+
+@app.get("/api/accounts/{account_id}")
+def accounts_get(account_id: str):
+    account = store.get_account(account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail={"error": "ACCOUNT_NOT_FOUND"})
+    return account
+
+
 class VoiceprintBody(BaseModel):
     userId: str
     featureVector: list[float]
