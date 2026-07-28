@@ -1,0 +1,56 @@
+export type Action = "send" | "balance" | "withdraw" | "airtime" | "bill" | "unknown";
+
+export type TransactionState =
+  | "INTENT_DETECTED"
+  | "COLLECTING_DETAILS"
+  | "CONFIRMATION_REQUIRED"
+  | "USER_CONFIRMED"
+  | "FACE_VERIFICATION_REQUIRED"
+  | "FACE_VERIFIED"
+  | "TRANSACTION_PROCESSING"
+  | "TRANSACTION_SUCCESS"
+  | "USER_CANCELLED"
+  | "INVALID_AMOUNT"
+  | "UNKNOWN_RECIPIENT"
+  | "LOW_AI_CONFIDENCE"
+  | "TRANSACTION_FAILED"
+  | "FACE_VERIFICATION_FAILED"
+  | "BMONI_API_ERROR";
+
+export interface ParsedIntent {
+  action: Action;
+  amount: number | null;
+  recipient: string | null;
+  confidence: number;
+}
+
+export interface TransactionRecord {
+  id: string;
+  userId: string;
+  action: Action;
+  amount: number | null;
+  recipient: string | null;
+  confidence: number | null;
+  state: TransactionState;
+  createdAt: string;
+  faceVerified: boolean;
+  bmoniReference: string | null;
+  error: string | null;
+  needsClarification?: "amount" | "recipient";
+}
+
+export interface Receipt {
+  transactionId: string;
+  type: Action;
+  amount: number | null;
+  recipient: string | null;
+  reference: string | null;
+  status: TransactionState;
+  date: string;
+  environment: string;
+}
+
+export interface Language {
+  code: string;
+  label: string;
+}

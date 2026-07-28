@@ -1,0 +1,394 @@
+import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
+import {
+  voiceProcess, confirmCreate, confirmAdvance, cancelTransaction,
+  verifyFace, sendTransaction, getReceipt, getBalance, registerVoice
+} from "../lib/api";
+import { recordAudio, blobToMfccVector } from "../lib/audio";
+import { phrase, speak, LANGUAGES } from "../lib/phrases";
+import type { TransactionRecord, Receipt, Action } from "../types";
+
+type Step = "register" | "listen" | "confirm" | "clarify" | "error" | "face" | "processing" | "balance" | "receipt";
+
+const ERROR_MESSAGES: Record<string, string> = {
+  INVALID_AMOUNT: "That amount doesn't look right. Please say an amount greater than zero.",
+  UNKNOWN_RECIPIENT: "I don't recognize that recipient. Try Adewale, Ngozi, or Ibrahim.",
+  TRANSACTION_FAILED: "Your transaction could not be completed. No money was deducted.",
+  FACE_VERIFICATION_FAILED: "We couldn't verify your identity. Please try again.",
+  BMONI_API_ERROR: "We're having trouble reaching BMONI right now. No money was deducted.",
+  NETWORK_ERROR: "We're having trouble connecting. Please check your connection and try again.",
+  default: "Sorry, something went wrong. Please try again."
+};
+
+export default function App() {
+  const [step, setStep] = useState<Step>("register");
+  const [userId, setUserId] = useState("mama-aisha");
+  const [langIdx, setLangIdx] = useState(0);
+  const [isRecording, setIsRecording] = useState(false);
+  const [transcript, setTranscript] = useState("");
+  const [tx, setTx] = useState<TransactionRecord | null>(null);
+  const [receipt, setReceipt] = useState<Receipt | null>(null);
+  const [balance, setBalance] = useState<number | null>(null);
+  const [errorCode, setErrorCode] = useState<string>("default");
+  const [regStatus, setRegStatus] = useState("");
+
+  const recorderRef = useRef<{ stop: () => void; result: Promise<Blob> } | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    if (step === "face" && videoRef.current) {
+      navigator.mediaDevices.getUserMedia({ video: true })
+        .then((stream) => { if (videoRef.current) videoRef.current.srcObject = stream; })
+        .catch(() => {});
+    }
+    return () => {
+      if (videoRef.current?.srcObject) {
+        (videoRef.current.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, [step]);
+
+  function resetAll() {
+    setTx(null); setReceipt(null); setTranscript(""); setBalance(null);
+    setStep("listen");
+  }
+
+  async function toggleRegisterRecording() {
+    if (!isRecording) {
+      setIsRecording(true);
+      setRegStatus("Listening... tap again to stop.");
+      const rec = await recordAudio();
+      recorderRef.current = rec;
+      rec.result.then(async (blob) => {
+        setIsRecording(false);
+        setRegStatus("Processing your voice sample...");
+        const vector = await blobToMfccVector(blob);
+        if (!vector) { setRegStatus("Couldn't read that clip — try again."); return; }
+        await registerVoice(userId, vector);
+        setRegStatus("Voice registered ✓");
+        setTimeout(() => setStep("listen"), 600);
+      });
+    } else {
+      recorderRef.current?.stop();
+    }
+  }
+
+  async function toggleListenRecording() {
+    if (!isRecording) {
+      setIsRecording(true);
+      const rec = await recordAudio();
+      recorderRef.current = rec;
+      rec.result.then(async (blob) => {
+        setIsRecording(false);
+        try {
+          const langCode = LANGUAGES[langIdx].code;
+          const { text, intent } = await voiceProcess(blob, langCode);
+          setTranscript(text);
+          await handleIntent(intent);
+        } catch {
+          setErrorCode("NETWORK_ERROR");
+          setStep("error");
+        }
+      });
+    } else {
+      recorderRef.current?.stop();
+    }
+  }
+
+  async function quickDemo(kind: "send" | "balance" | "withdraw") {
+    const demos: Record<string, { action: Action; amount: number | null; recipient: string | null; confidence: number }> = {
+      send: { action: "send", amount: 10000, recipient: "adewale", confidence: 0.95 },
+      balance: { action: "balance", amount: null, recipient: null, confidence: 0.95 },
+      withdraw: { action: "withdraw", amount: 5000, recipient: null, confidence: 0.95 }
+    };
+    await handleIntent(demos[kind]);
+  }
+
+  async function handleIntent(intent: { action: Action; amount: number | null; recipient: string | null; confidence: number }) {
+    if (intent.action === "balance") {
+      const b = await getBalance(userId);
+      speak(phrase(LANGUAGES[langIdx].code, "balance", b.balance));
+      setBalance(b.balance);
+      setStep("balance");
+      return;
+    }
+
+    const created = await confirmCreate(userId, intent.action, intent.amount, intent.recipient, intent.confidence);
+    setTx(created);
+
+    if (created.state === "LOW_AI_CONFIDENCE" || created.state === "UNKNOWN_RECIPIENT") {
+      setStep("clarify");
+      return;
+    }
+    if (created.state === "INVALID_AMOUNT") {
+      setErrorCode("INVALID_AMOUNT");
+      setStep("error");
+      return;
+    }
+    if (created.state === "CONFIRMATION_REQUIRED") {
+      const lang = LANGUAGES[langIdx].code;
+      const say = created.action === "send"
+        ? phrase(lang, "confirmSend", created.amount || 0, created.recipient || "")
+        : phrase(lang, "confirmWithdraw", created.amount || 0);
+      speak(say);
+      setStep("confirm");
+      return;
+    }
+    setErrorCode("TRANSACTION_FAILED");
+    setStep("error");
+  }
+
+  async function onCancel() {
+    if (tx) await cancelTransaction(tx.id);
+    resetAll();
+  }
+
+  async function onConfirm() {
+    if (!tx) return;
+    const advanced = await confirmAdvance(tx.id);
+    setTx(advanced);
+    setStep("face");
+  }
+
+  async function onFaceResult(matched: boolean) {
+    if (!tx) return;
+    if (videoRef.current?.srcObject) {
+      (videoRef.current.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
+    }
+    const verified = await verifyFace(tx.id, matched);
+    setTx(verified);
+
+    if (!matched) {
+      setErrorCode("FACE_VERIFICATION_FAILED");
+      setStep("error");
+      return;
+    }
+
+    setStep("processing");
+    const sent = await sendTransaction(tx.id);
+    setTx(sent);
+
+    if (sent.state !== "TRANSACTION_SUCCESS") {
+      setErrorCode(sent.state === "BMONI_API_ERROR" ? "BMONI_API_ERROR" : "TRANSACTION_FAILED");
+      setStep("error");
+      return;
+    }
+
+    const r = await getReceipt(sent.id);
+    setReceipt(r);
+    const lang = LANGUAGES[langIdx].code;
+    speak(sent.action === "send"
+      ? phrase(lang, "successSend", sent.amount || 0, sent.recipient || "")
+      : phrase(lang, "successWithdraw", sent.amount || 0));
+    setStep("receipt");
+  }
+
+  function downloadReceipt() {
+    if (!receipt) return;
+    const text = `NativePay Receipt\n------------------\nTransaction ID: ${receipt.transactionId}\nType: ${receipt.type}\nAmount: NGN ${receipt.amount}\nRecipient: ${receipt.recipient || "-"}\nReference: ${receipt.reference}\nDate: ${receipt.date}\nEnvironment: ${receipt.environment}\n`;
+    const blob = new Blob([text], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `${receipt.transactionId}.txt`; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const titles: Record<Step, [string, string]> = {
+    register: ["Register your voice", "One short phrase, spoken once, for faster future confirmations."],
+    listen: ["NativePay", "Tap and speak — or try a quick demo phrase."],
+    confirm: ["Confirm", "Check the details before continuing."],
+    clarify: ["One more thing", "I need a bit more detail."],
+    error: ["Let's try that again", ""],
+    face: ["Verify it's you", "A quick face check keeps this secure."],
+    processing: ["Processing", "Talking to BMONI sandbox..."],
+    balance: ["Your balance", ""],
+    receipt: ["Done", "Your transfer is complete."]
+  };
+  const [title, sub] = titles[step];
+
+  return (
+    <div style={s.body}>
+      <div style={s.appCard}>
+        <header style={s.header}>
+          <div style={s.topRow}>
+            <Link to="/" style={s.backLink}>← NativePay</Link>
+            <span style={s.demoBadge}>Demo Mode</span>
+          </div>
+          <h1 style={s.h1}>{title}</h1>
+          <p style={s.sub}>{sub}</p>
+        </header>
+
+        <main style={s.main}>
+          {step === "register" && (
+            <>
+              <label style={s.label}>Name or phone number</label>
+              <input style={s.input} value={userId} onChange={(e) => setUserId(e.target.value)} />
+              <div style={s.micStage}>
+                <button style={{ ...s.micBtn, ...(isRecording ? s.micBtnRecording : {}) }} onClick={toggleRegisterRecording}>🎤</button>
+                <div style={s.hint}>Tap, then say: <em>"This is my voice for NativePay."</em></div>
+                <div style={s.hint}>{regStatus}</div>
+                <div style={s.quickRow}><span style={s.quickBtn} onClick={() => setStep("listen")}>Skip for now</span></div>
+              </div>
+            </>
+          )}
+
+          {step === "listen" && (
+            <>
+              <div style={s.langRow}>
+                {LANGUAGES.map((l, i) => (
+                  <div key={l.code + i} style={{ ...s.langChip, ...(i === langIdx ? s.langChipActive : {}) }} onClick={() => setLangIdx(i)}>{l.label}</div>
+                ))}
+              </div>
+              <div style={s.micStage}>
+                <button style={{ ...s.micBtn, ...(isRecording ? s.micBtnRecording : {}) }} onClick={toggleListenRecording}>🎤</button>
+                <div style={s.transcript}>{transcript || "\u00A0"}</div>
+                <div style={s.hint}>Tap and speak, e.g. "Send 10,000 to Adewale"</div>
+                <div style={s.quickRow}>
+                  <span style={s.quickBtn} onClick={() => quickDemo("send")}>Demo: Send ₦10,000</span>
+                  <span style={s.quickBtn} onClick={() => quickDemo("balance")}>Demo: Check balance</span>
+                  <span style={s.quickBtn} onClick={() => quickDemo("withdraw")}>Demo: Withdraw ₦5,000</span>
+                </div>
+              </div>
+            </>
+          )}
+
+          {step === "confirm" && tx && (
+            <>
+              <div style={s.confirmCard}>
+                <div style={s.to}>{tx.action === "send" ? "Send money" : "Withdraw cash"}</div>
+                <div style={s.amount}>₦{(tx.amount || 0).toLocaleString()}</div>
+                <div style={s.to}>{tx.action === "send" ? `to ${tx.recipient}` : ""}</div>
+                <div style={s.badgeRow}><span style={{ ...s.badge, ...s.badgeGold }}>Confidence {Math.round((tx.confidence || 0) * 100)}%</span></div>
+              </div>
+              <div style={s.actionRow}>
+                <button style={{ ...s.btn, ...s.btnGhost }} onClick={onCancel}>No, cancel</button>
+                <button style={{ ...s.btn, ...s.btnPrimary }} onClick={onConfirm}>Yes, continue</button>
+              </div>
+            </>
+          )}
+
+          {step === "clarify" && (
+            <>
+              <div style={s.confirmCard}>
+                <div style={{ ...s.to, fontSize: 15, color: "var(--indigo)", fontWeight: 600 }}>
+                  {tx?.needsClarification === "amount" ? "How much would you like to send?" : "Who would you like to send it to? Try one of: Adewale, Ngozi, Ibrahim."}
+                </div>
+              </div>
+              <div style={s.actionRow}><button style={{ ...s.btn, ...s.btnGhost, flex: 1 }} onClick={resetAll}>Start over</button></div>
+            </>
+          )}
+
+          {step === "error" && (
+            <>
+              <div style={s.errorCard}>{ERROR_MESSAGES[errorCode] || ERROR_MESSAGES.default}</div>
+              <div style={s.actionRow}><button style={{ ...s.btn, ...s.btnPrimary, flex: 1 }} onClick={resetAll}>Try again</button></div>
+            </>
+          )}
+
+          {step === "face" && (
+            <div style={s.faceStage}>
+              <video ref={videoRef} autoPlay playsInline muted style={s.video} />
+              <div style={s.mockNote}>Camera capture is real. Match/no-match is simulated for the demo — swap in a real verification provider before production use.</div>
+              <div style={{ ...s.actionRow, width: "100%" }}>
+                <button style={{ ...s.btn, ...s.btnGhost }} onClick={() => onFaceResult(false)}>Simulate: no match</button>
+                <button style={{ ...s.btn, ...s.btnGold }} onClick={() => onFaceResult(true)}>Simulate: match ✓</button>
+              </div>
+            </div>
+          )}
+
+          {step === "processing" && (
+            <div style={s.statusStage}>
+              <div style={s.spinner} />
+              <div>Sending to BMONI sandbox...</div>
+              <div style={s.badgeRow}>
+                <span style={s.badge}>Test data only</span>
+                <span style={{ ...s.badge, ...s.badgeGold }}>Sandbox-mock</span>
+              </div>
+            </div>
+          )}
+
+          {step === "balance" && (
+            <>
+              <div style={s.confirmCard}>
+                <div style={s.to}>Account balance</div>
+                <div style={s.amount}>₦{(balance || 0).toLocaleString()}</div>
+              </div>
+              <button style={{ ...s.btn, ...s.btnPrimary, width: "100%", marginTop: 16 }} onClick={resetAll}>New request</button>
+            </>
+          )}
+
+          {step === "receipt" && receipt && tx && (
+            <>
+              <div style={s.receipt}>
+                <h3 style={s.receiptH3}>✓ {tx.action === "withdraw" ? "Withdrawal" : "Transfer"} successful</h3>
+                <div style={s.receiptRow}><span>Amount</span><span>₦{(tx.amount || 0).toLocaleString()}</span></div>
+                {tx.action === "send" && <div style={s.receiptRow}><span>Recipient</span><span>{tx.recipient}</span></div>}
+                <div style={s.receiptRow}><span>Transaction ID</span><span>{receipt.transactionId}</span></div>
+                <div style={s.receiptRow}><span>Reference</span><span>{receipt.reference}</span></div>
+                <div style={s.receiptRow}><span>Date</span><span>{new Date(receipt.date).toLocaleString()}</span></div>
+                <div style={s.receiptRow}><span>Environment</span><span>{receipt.environment}</span></div>
+              </div>
+              <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+                <button style={{ ...s.btn, ...s.btnGhost }} onClick={downloadReceipt}>Download</button>
+                <button style={{ ...s.btn, ...s.btnGhost }} onClick={() => window.print()}>Print</button>
+              </div>
+              <button style={{ ...s.btn, ...s.btnPrimary, width: "100%", marginTop: 10 }} onClick={resetAll}>New request</button>
+            </>
+          )}
+        </main>
+
+        <footer style={s.footer}>
+          <span style={s.resetLink} onClick={resetAll}>Start over</span>
+          <span style={{ margin: "0 8px", color: "#c9c2b4" }}>·</span>
+          <Link to="/history" style={s.resetLink}>History</Link>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+const s: Record<string, React.CSSProperties> = {
+  body: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 },
+  appCard: { width: "100%", maxWidth: 460, background: "#fff", borderRadius: 22, overflow: "hidden", boxShadow: "0 20px 60px rgba(19,28,59,0.18)", border: "1px solid var(--line)" },
+  header: { background: "var(--indigo)", color: "var(--paper)", padding: "20px 26px 16px", position: "relative", overflow: "hidden" },
+  topRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
+  backLink: { color: "var(--gold-light)", fontSize: 12, textDecoration: "none" },
+  demoBadge: { fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", background: "var(--gold)", color: "#fff", padding: "4px 9px", borderRadius: 100 },
+  h1: { fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 21, margin: "0 0 4px" },
+  sub: { margin: 0, fontSize: 12, color: "rgba(245,239,226,0.75)" },
+  main: { padding: "24px 26px", minHeight: 360, display: "flex", flexDirection: "column" },
+  label: { fontSize: 13, fontWeight: 600, color: "#5c5346", marginBottom: 6, display: "block" },
+  input: { width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--line)", fontSize: 15, marginBottom: 14 },
+  micStage: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, gap: 14, padding: "4px 0" },
+  micBtn: { width: 88, height: 88, borderRadius: "50%", border: "none", background: "var(--gold)", color: "#fff", fontSize: 30, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 8px 24px rgba(201,138,44,0.35)" },
+  micBtnRecording: { background: "var(--alert)" },
+  hint: { fontSize: "12.5px", color: "#6b6357", textAlign: "center", maxWidth: 290 },
+  transcript: { fontFamily: "Fraunces, serif", fontSize: "16.5px", textAlign: "center", color: "var(--indigo)", minHeight: 24, padding: "0 8px" },
+  quickRow: { display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap", justifyContent: "center" },
+  quickBtn: { border: "1px solid var(--line)", background: "#fff", padding: "7px 12px", borderRadius: 100, fontSize: 12, fontWeight: 600, cursor: "pointer" },
+  langRow: { display: "flex", gap: 7, marginBottom: 16, flexWrap: "wrap" },
+  langChip: { border: "1px solid var(--line)", background: "#fff", padding: "6px 11px", borderRadius: 100, fontSize: 12, fontWeight: 600, cursor: "pointer" },
+  langChipActive: { background: "var(--indigo)", color: "#fff", borderColor: "var(--indigo)" },
+  confirmCard: { background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 14, padding: 18, textAlign: "center" },
+  amount: { fontFamily: "Fraunces, serif", fontSize: 26, fontWeight: 700, color: "var(--indigo)", margin: "6px 0" },
+  to: { fontSize: "13.5px", color: "#6b6357" },
+  actionRow: { display: "flex", gap: 10, marginTop: 16 },
+  btn: { flex: 1, padding: 13, borderRadius: 12, border: "none", fontWeight: 700, fontSize: "14.5px", cursor: "pointer" },
+  btnPrimary: { background: "var(--indigo)", color: "#fff" },
+  btnGhost: { background: "#fff", color: "var(--charcoal)", border: "1px solid var(--line)" },
+  btnGold: { background: "var(--gold)", color: "#fff" },
+  badgeRow: { display: "flex", gap: 6, justifyContent: "center", marginTop: 10, flexWrap: "wrap" },
+  badge: { fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", padding: "3px 8px", borderRadius: 100, background: "var(--indigo)", color: "var(--paper)" },
+  badgeGold: { background: "var(--gold)" },
+  errorCard: { background: "#fdf1ef", border: "1px solid #f0c7be", borderRadius: 14, padding: 18, textAlign: "center", color: "var(--alert)", fontSize: 14 },
+  video: { width: 190, height: 190, borderRadius: "50%", objectFit: "cover", border: "4px solid var(--gold)", background: "var(--indigo-deep)" },
+  faceStage: { display: "flex", flexDirection: "column", alignItems: "center", gap: 12, flex: 1, justifyContent: "center" },
+  mockNote: { fontSize: "10.5px", color: "#a08a5f", background: "#fbf3e2", border: "1px dashed #d9b978", padding: "6px 10px", borderRadius: 8, textAlign: "center" },
+  statusStage: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, flex: 1, textAlign: "center" },
+  spinner: { width: 36, height: 36, borderRadius: "50%", border: "4px solid var(--line)", borderTopColor: "var(--gold)", animation: "spin .9s linear infinite" },
+  receipt: { background: "#fff", border: "1px solid var(--line)", borderRadius: 14, padding: 18 },
+  receiptH3: { fontFamily: "Fraunces, serif", margin: "0 0 12px", color: "var(--success)", fontSize: 17 },
+  receiptRow: { display: "flex", justifyContent: "space-between", fontSize: 13, padding: "6px 0", borderBottom: "1px dashed var(--line)" },
+  footer: { padding: "12px 26px 18px", textAlign: "center" },
+  resetLink: { fontSize: 12, color: "#8a8175", cursor: "pointer", textDecoration: "underline" }
+};
