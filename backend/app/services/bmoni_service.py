@@ -164,7 +164,7 @@ async def create_smart_wallet(user_id: str) -> dict:
                 "currency": WALLET_CURRENCY,
                 "userOwnerAddress": owner.address,
                 "ownerProofChallengeId": challenge["challengeId"],
-                "ownerProofSignature": signed.signature.hex(),
+                "ownerProofSignature": "0x" + signed.signature.hex(),
             },
         )
         if create_res.status_code >= 400:
@@ -303,7 +303,7 @@ def sign_withdrawal_payload(sign_payload: dict) -> str:
     typed_data = sign_payload.get("typedData") or sign_payload
     signable = encode_typed_data(full_message=typed_data)
     signed = Account.sign_message(signable, private_key=owner.key)
-    return signed.signature.hex()
+    return "0x" + signed.signature.hex()
 
 
 async def submit_proposal_signature(user_id: str, proposal_id: str, signature: str) -> dict:
