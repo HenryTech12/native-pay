@@ -20,8 +20,47 @@ function formatCardNumber(raw: string): string {
   return digits.replace(/(.{4})/g, "$1 ").trim();
 }
 
+function actionTitle(action: Action): string {
+  switch (action) {
+    case "send": return "Send money";
+    case "withdraw": return "Withdraw cash";
+    case "deposit": return "Deposit cash";
+    case "airtime": return "Buy airtime";
+    default: return "Transaction";
+  }
+}
+
+function successTitle(action: Action): string {
+  switch (action) {
+    case "send": return "Transfer";
+    case "withdraw": return "Withdrawal";
+    case "deposit": return "Deposit";
+    case "airtime": return "Airtime purchase";
+    default: return "Transaction";
+  }
+}
+
+function confirmPhraseFor(lang: string, action: Action, amount: number | null, recipient: string | null): string {
+  switch (action) {
+    case "send": return phrase(lang, "confirmSend", amount || 0, recipient || "");
+    case "deposit": return phrase(lang, "confirmDeposit", amount || 0);
+    case "airtime": return phrase(lang, "confirmAirtime", amount || 0, recipient || "");
+    default: return phrase(lang, "confirmWithdraw", amount || 0);
+  }
+}
+
+function successPhraseFor(lang: string, action: Action, amount: number | null, recipient: string | null): string {
+  switch (action) {
+    case "send": return phrase(lang, "successSend", amount || 0, recipient || "");
+    case "deposit": return phrase(lang, "successDeposit", amount || 0);
+    case "airtime": return phrase(lang, "successAirtime", amount || 0, recipient || "");
+    default: return phrase(lang, "successWithdraw", amount || 0);
+  }
+}
+
 const ERROR_MESSAGES: Record<string, string> = {
   INVALID_AMOUNT: "That amount doesn't look right. Please say an amount greater than zero.",
+  INSUFFICIENT_FUNDS: "You don't have enough balance for that.",
   UNKNOWN_RECIPIENT: "I don't recognize that recipient. Try Adewale, Ngozi, or Ibrahim.",
   TRANSACTION_FAILED: "Your transaction could not be completed. No money was deducted.",
   FACE_VERIFICATION_FAILED: "We couldn't verify your identity. Please try again.",
@@ -175,11 +214,13 @@ export default function App() {
     }
   }
 
-  async function quickDemo(kind: "send" | "balance" | "withdraw") {
+  async function quickDemo(kind: "send" | "balance" | "withdraw" | "deposit" | "airtime") {
     const demos: Record<string, { action: Action; amount: number | null; recipient: string | null; confidence: number }> = {
       send: { action: "send", amount: 10000, recipient: "adewale", confidence: 0.95 },
       balance: { action: "balance", amount: null, recipient: null, confidence: 0.95 },
-      withdraw: { action: "withdraw", amount: 5000, recipient: null, confidence: 0.95 }
+      withdraw: { action: "withdraw", amount: 5000, recipient: null, confidence: 0.95 },
+      deposit: { action: "deposit", amount: 20000, recipient: null, confidence: 0.95 },
+      airtime: { action: "airtime", amount: 500, recipient: "08012345678", confidence: 0.95 }
     };
     await handleIntent(demos[kind]);
   }
@@ -200,17 +241,14 @@ export default function App() {
       setStep("clarify");
       return;
     }
-    if (created.state === "INVALID_AMOUNT") {
-      setErrorCode("INVALID_AMOUNT");
+    if (created.state === "INVALID_AMOUNT" || created.state === "INSUFFICIENT_FUNDS") {
+      setErrorCode(created.state);
       setStep("error");
       return;
     }
     if (created.state === "CONFIRMATION_REQUIRED") {
       const lang = LANGUAGES[langIdx].code;
-      const say = created.action === "send"
-        ? phrase(lang, "confirmSend", created.amount || 0, created.recipient || "")
-        : phrase(lang, "confirmWithdraw", created.amount || 0);
-      speak(say, lang);
+      speak(confirmPhraseFor(lang, created.action, created.amount, created.recipient), lang);
       setStep("confirm");
       return;
     }
@@ -257,9 +295,7 @@ export default function App() {
     const r = await getReceipt(sent.id);
     setReceipt(r);
     const lang = LANGUAGES[langIdx].code;
-    speak(sent.action === "send"
-      ? phrase(lang, "successSend", sent.amount || 0, sent.recipient || "")
-      : phrase(lang, "successWithdraw", sent.amount || 0), lang);
+    speak(successPhraseFor(lang, sent.action, sent.amount, sent.recipient), lang);
     setStep("receipt");
   }
 
@@ -288,7 +324,8 @@ export default function App() {
     balance: ["Your balance", ""],
     receipt: ["Done", "Your transfer is complete."]
   };
-  const [title, sub] = titles[step];
+  const [title, defaultSub] = titles[step];
+  const sub = step === "receipt" && tx ? `Your ${successTitle(tx.action).toLowerCase()} is complete.` : defaultSub;
 
   return (
     <DeviceFrame showReceiptPrint={step === "receipt"} cardSlotActive={inserting} onKeypadPress={onKeypadPress}>
@@ -389,6 +426,8 @@ export default function App() {
                   <span style={s.quickBtn} onClick={() => quickDemo("send")}>Demo: Send ₦10,000</span>
                   <span style={s.quickBtn} onClick={() => quickDemo("balance")}>Demo: Check balance</span>
                   <span style={s.quickBtn} onClick={() => quickDemo("withdraw")}>Demo: Withdraw ₦5,000</span>
+                  <span style={s.quickBtn} onClick={() => quickDemo("deposit")}>Demo: Deposit ₦20,000</span>
+                  <span style={s.quickBtn} onClick={() => quickDemo("airtime")}>Demo: Buy ₦500 airtime</span>
                 </div>
               </div>
             </>
@@ -397,9 +436,11 @@ export default function App() {
           {step === "confirm" && tx && (
             <>
               <div style={s.confirmCard}>
-                <div style={s.to}>{tx.action === "send" ? "Send money" : "Withdraw cash"}</div>
+                <div style={s.to}>{actionTitle(tx.action)}</div>
                 <div style={s.amount}>₦{(tx.amount || 0).toLocaleString()}</div>
-                <div style={s.to}>{tx.action === "send" ? `to ${tx.recipient}` : ""}</div>
+                <div style={s.to}>
+                  {tx.action === "send" ? `to ${tx.recipient}` : tx.action === "airtime" ? `for ${tx.recipient}` : ""}
+                </div>
                 <div style={s.badgeRow}><span style={{ ...s.badge, ...s.badgeGold }}>Confidence {Math.round((tx.confidence || 0) * 100)}%</span></div>
               </div>
               <div style={s.actionRow}>
@@ -413,7 +454,11 @@ export default function App() {
             <>
               <div style={s.confirmCard}>
                 <div style={{ ...s.to, fontSize: 15, color: "var(--indigo)", fontWeight: 600 }}>
-                  {tx?.needsClarification === "amount" ? "How much would you like to send?" : "Who would you like to send it to? Try one of: Adewale, Ngozi, Ibrahim."}
+                  {tx?.needsClarification === "amount"
+                    ? "How much would you like to send?"
+                    : tx?.action === "airtime"
+                      ? "What phone number should I top up?"
+                      : "Who would you like to send it to? Try one of: Adewale, Ngozi, Ibrahim."}
                 </div>
               </div>
               <div style={s.actionRow}><button style={{ ...s.btn, ...s.btnGhost, flex: 1 }} onClick={resetAll}>Start over</button></div>
@@ -462,9 +507,10 @@ export default function App() {
           {step === "receipt" && receipt && tx && (
             <>
               <div style={s.receipt}>
-                <h3 style={s.receiptH3}>✓ {tx.action === "withdraw" ? "Withdrawal" : "Transfer"} successful</h3>
+                <h3 style={s.receiptH3}>✓ {successTitle(tx.action)} successful</h3>
                 <div style={s.receiptRow}><span>Amount</span><span>₦{(tx.amount || 0).toLocaleString()}</span></div>
                 {tx.action === "send" && <div style={s.receiptRow}><span>Recipient</span><span>{tx.recipient}</span></div>}
+                {tx.action === "airtime" && <div style={s.receiptRow}><span>Phone number</span><span>{tx.recipient}</span></div>}
                 <div style={s.receiptRow}><span>Transaction ID</span><span>{receipt.transactionId}</span></div>
                 <div style={s.receiptRow}><span>Reference</span><span>{receipt.reference}</span></div>
                 <div style={s.receiptRow}><span>Date</span><span>{new Date(receipt.date).toLocaleString()}</span></div>

@@ -14,7 +14,7 @@ NativePay replaces the app UI with a conversation. Speak in English, Nigerian Pi
 2. **Speak naturally** — "Send ten thousand naira to Adewale" — transcribed and parsed into an intent (amount, recipient, action).
 3. **Confirm out loud** — NativePay reads the transaction back before anything moves.
 4. **Verify it's you** — a fresh random-digit challenge is spoken and repeated back each session; a voiceprint match lets you straight in, a low-confidence match or no enrollment steps up to a face check.
-5. **BMONI executes** the transfer/withdrawal/balance check and a spoken + digital receipt confirms it.
+5. **BMONI executes** it — send, withdraw, deposit, airtime top-up, or a balance check — and a spoken + digital receipt confirms it. Send/withdraw/airtime/deposit all move the account's real (in-memory) balance; an insufficient-funds check blocks send/withdraw/airtime before confirmation if the amount exceeds it.
 
 ## Architecture
 

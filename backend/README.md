@@ -77,3 +77,4 @@ tests/
 - CORS is wide open (`allow_origins=["*"]`) for hackathon simplicity — tighten before this goes beyond a demo.
 - `voice_auth.py` is a heuristic pre-check (cosine similarity over MFCC vectors), not trained speaker-verification. Face capture is the real authorization gate; voice only decides whether a session skips straight to it.
 - Storage (`store.py`) is process-memory only — restarting the server clears every account, voiceprint, and transaction.
+- Supported `action` values: `send`, `withdraw`, `deposit`, `airtime`, `balance` (`bill` is defined in the type but not implemented anywhere — treat it as unsupported). Send/withdraw/airtime debit the account's balance and require an amount that doesn't exceed it (`INSUFFICIENT_FUNDS` otherwise); deposit credits it. `airtime` uses `recipient` to hold the phone number being topped up, not a contact name — it isn't checked against the recipient book the way `send` is.

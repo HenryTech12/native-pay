@@ -39,11 +39,17 @@ SYSTEM_PROMPT = """You extract structured banking intents from spoken requests, 
 
 Return ONLY valid JSON, no prose, no markdown fences, matching this shape:
 {
-  "action": "send" | "balance" | "withdraw" | "airtime" | "bill" | "unknown",
+  "action": "send" | "balance" | "withdraw" | "deposit" | "airtime" | "bill" | "unknown",
   "amount": <integer naira amount, or null>,
   "recipient": "<name if mentioned, or null>",
   "confidence": <0-1 float, your confidence in this extraction>
-}"""
+}
+
+Notes:
+- "deposit" means the caller is putting money INTO their own account (cash-in at the agent) — no recipient needed.
+- "withdraw" means taking cash OUT of their own account — no recipient needed.
+- "airtime" means buying phone credit — put the phone number being topped up in "recipient", not a person's name.
+- "send" means transferring to another person — put that person's name in "recipient"."""
 
 
 async def parse_intent(transcript_text: str) -> ParsedIntent:

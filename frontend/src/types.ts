@@ -1,4 +1,4 @@
-export type Action = "send" | "balance" | "withdraw" | "airtime" | "bill" | "unknown";
+export type Action = "send" | "balance" | "withdraw" | "deposit" | "airtime" | "bill" | "unknown";
 
 export type TransactionState =
   | "INTENT_DETECTED"
@@ -11,6 +11,7 @@ export type TransactionState =
   | "TRANSACTION_SUCCESS"
   | "USER_CANCELLED"
   | "INVALID_AMOUNT"
+  | "INSUFFICIENT_FUNDS"
   | "UNKNOWN_RECIPIENT"
   | "LOW_AI_CONFIDENCE"
   | "TRANSACTION_FAILED"

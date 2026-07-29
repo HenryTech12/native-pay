@@ -22,6 +22,7 @@ STATES = {
     "TRANSACTION_SUCCESS": "TRANSACTION_SUCCESS",
     "USER_CANCELLED": "USER_CANCELLED",
     "INVALID_AMOUNT": "INVALID_AMOUNT",
+    "INSUFFICIENT_FUNDS": "INSUFFICIENT_FUNDS",
     "UNKNOWN_RECIPIENT": "UNKNOWN_RECIPIENT",
     "LOW_AI_CONFIDENCE": "LOW_AI_CONFIDENCE",
     "TRANSACTION_FAILED": "TRANSACTION_FAILED",
@@ -43,7 +44,7 @@ def evaluate_intent(
         record = store.create_transaction_record(user_id, action, amount, recipient, confidence)
         return store.update_transaction(record.id, state=STATES["LOW_AI_CONFIDENCE"], needsClarification="recipient")
 
-    if action in ("send", "withdraw"):
+    if action in ("send", "withdraw", "deposit", "airtime"):
         if not amount or amount <= 0:
             record = store.create_transaction_record(user_id, action, amount, recipient, confidence)
             return store.update_transaction(record.id, state=STATES["INVALID_AMOUNT"])
@@ -53,6 +54,17 @@ def evaluate_intent(
         if not key or key not in store.recipients:
             record = store.create_transaction_record(user_id, action, amount, recipient, confidence)
             return store.update_transaction(record.id, state=STATES["UNKNOWN_RECIPIENT"])
+
+    if action == "airtime":
+        if not (recipient or "").strip():
+            record = store.create_transaction_record(user_id, action, amount, recipient, confidence)
+            return store.update_transaction(record.id, state=STATES["UNKNOWN_RECIPIENT"], needsClarification="recipient")
+
+    if action in ("send", "withdraw", "airtime"):
+        account = store.get_account(user_id)
+        if account and amount and amount > account.balance:
+            record = store.create_transaction_record(user_id, action, amount, recipient, confidence)
+            return store.update_transaction(record.id, state=STATES["INSUFFICIENT_FUNDS"])
 
     record = store.create_transaction_record(user_id, action, amount, recipient, confidence)
     next_state = STATES["TRANSACTION_PROCESSING"] if action == "balance" else STATES["CONFIRMATION_REQUIRED"]
@@ -98,8 +110,13 @@ async def execute_transaction(tx_id: str) -> Optional[TransactionRecord]:
     store.update_transaction(tx_id, state=STATES["TRANSACTION_PROCESSING"])
 
     try:
-        if tx.action in ("send", "withdraw"):
+        if tx.action in ("send", "withdraw", "airtime"):
             result = await create_transfer(tx.amount, tx.recipient or "self (withdrawal)")
+            store.adjust_balance(tx.userId, -(tx.amount or 0))
+            return store.update_transaction(tx_id, state=STATES["TRANSACTION_SUCCESS"], bmoniReference=result["reference"])
+        if tx.action == "deposit":
+            result = await create_transfer(tx.amount, "self (deposit)")
+            store.adjust_balance(tx.userId, tx.amount or 0)
             return store.update_transaction(tx_id, state=STATES["TRANSACTION_SUCCESS"], bmoniReference=result["reference"])
         return store.update_transaction(tx_id, state=STATES["TRANSACTION_SUCCESS"])
     except Exception as err:

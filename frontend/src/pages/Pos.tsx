@@ -6,11 +6,22 @@ import type { TransactionRecord } from "../types";
 
 function stateClass(state: string): "ok" | "err" | "pending" {
   if (state === "TRANSACTION_SUCCESS") return "ok";
-  if (["TRANSACTION_FAILED", "FACE_VERIFICATION_FAILED", "BMONI_API_ERROR", "INVALID_AMOUNT", "UNKNOWN_RECIPIENT", "USER_CANCELLED"].includes(state)) return "err";
+  if (["TRANSACTION_FAILED", "FACE_VERIFICATION_FAILED", "BMONI_API_ERROR", "INVALID_AMOUNT", "INSUFFICIENT_FUNDS", "UNKNOWN_RECIPIENT", "USER_CANCELLED"].includes(state)) return "err";
   return "pending";
 }
 
 const badgeColors = { ok: "#3D7A5C", err: "#B23A2E", pending: "#C98A2C" };
+
+function actionTitle(action: string): string {
+  switch (action) {
+    case "send": return "Send money";
+    case "withdraw": return "Withdraw cash";
+    case "deposit": return "Deposit cash";
+    case "airtime": return "Buy airtime";
+    case "balance": return "Balance check";
+    default: return "Transaction";
+  }
+}
 
 export default function Pos() {
   const [txId, setTxId] = useState("");
@@ -60,7 +71,7 @@ export default function Pos() {
                   {tx.state.replace(/_/g, " ")}
                 </span>
               </Card>
-              <Card label="Type">{tx.action === "send" ? "Send money" : tx.action === "withdraw" ? "Withdraw cash" : "Balance check"}</Card>
+              <Card label="Type">{actionTitle(tx.action)}</Card>
               <Card label="Amount">{tx.amount ? `₦${tx.amount.toLocaleString()}` : "—"}</Card>
               <Card label="Face verification">{tx.faceVerified ? "✓ Verified" : "Not yet verified"}</Card>
               <Card label="Started">{new Date(tx.createdAt).toLocaleString()}</Card>
