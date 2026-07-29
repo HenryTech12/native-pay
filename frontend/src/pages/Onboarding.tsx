@@ -146,6 +146,7 @@ export default function Onboarding() {
           {step === "name" && (
             <div style={s.micStage}>
               <div style={s.hint}>{phrase(lang, "askFullName")}</div>
+              <span style={s.linkText} onClick={() => speak(phrase(lang, "askFullName"), lang)}>🔊 Repeat prompt</span>
               <button style={{ ...s.micBtn, ...(isRecording ? s.micBtnRecording : {}) }} onClick={() => captureTranscript((text) => { setFullName(text); setStep("address"); })}>🎤</button>
               <div style={s.transcript}>{fullName || " "}</div>
               <div style={s.hint}>{status}</div>
@@ -155,6 +156,7 @@ export default function Onboarding() {
           {step === "address" && (
             <div style={s.micStage}>
               <div style={s.hint}>{phrase(lang, "askAddress")}</div>
+              <span style={s.linkText} onClick={() => speak(phrase(lang, "askAddress"), lang)}>🔊 Repeat prompt</span>
               <button style={{ ...s.micBtn, ...(isRecording ? s.micBtnRecording : {}) }} onClick={() => captureTranscript((text) => { setAddress(text); setStep("voiceprint"); })}>🎤</button>
               <div style={s.transcript}>{address || " "}</div>
               <div style={s.hint}>{status}</div>
@@ -165,6 +167,7 @@ export default function Onboarding() {
             <div style={s.micStage}>
               <div style={s.transcript}>{challenge.spoken}</div>
               <div style={s.hint}>Listen, then tap and repeat these numbers back.</div>
+              <span style={s.linkText} onClick={() => speak(phrase(lang, "askRepeatDigits", challenge.spoken), lang)}>🔊 Repeat prompt</span>
               <button style={{ ...s.micBtn, ...(isRecording ? s.micBtnRecording : {}) }} onClick={captureVoiceprintSample}>🎤</button>
               <div style={s.hint}>{status}</div>
             </div>
@@ -228,6 +231,7 @@ const s: Record<string, React.CSSProperties> = {
   langRow: { display: "flex", gap: 7, marginBottom: 20, flexWrap: "wrap" },
   langChip: { border: "1px solid var(--line)", background: "#fff", padding: "6px 11px", borderRadius: 100, fontSize: 12, fontWeight: 600, cursor: "pointer" },
   langChipActive: { background: "var(--indigo)", color: "#fff", borderColor: "var(--indigo)" },
+  linkText: { color: "var(--indigo)", fontWeight: 700, cursor: "pointer", textDecoration: "underline", fontSize: 12 },
   micStage: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, gap: 14, padding: "4px 0" },
   micBtn: { width: 88, height: 88, borderRadius: "50%", border: "none", background: "var(--gold)", color: "#fff", fontSize: 30, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 8px 24px rgba(201,138,44,0.35)" },
   micBtnRecording: { background: "var(--alert)" },

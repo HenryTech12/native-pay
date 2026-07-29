@@ -173,11 +173,19 @@ export async function speak(text: string, lang: string = "en") {
     const blob = await synthesizeSpeech(text, lang);
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
+    let playbackBlocked = false;
     await new Promise<void>((resolve) => {
       audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
       audio.onerror = () => { URL.revokeObjectURL(url); resolve(); };
-      audio.play().catch(() => { URL.revokeObjectURL(url); resolve(); });
+      audio.play().catch(() => { playbackBlocked = true; URL.revokeObjectURL(url); resolve(); });
     });
+    // audio.play() can be silently blocked by the browser's autoplay
+    // policy (common on mobile when too much time passes between the
+    // triggering tap and playback starting, e.g. the TTS fetch itself) —
+    // fall back to speechSynthesis instead of playing nothing at all.
+    if (playbackBlocked) {
+      await speakWithBrowserVoice(text);
+    }
   } catch {
     await speakWithBrowserVoice(text);
   } finally {
