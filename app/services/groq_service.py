@@ -21,6 +21,12 @@ def _get_client() -> Groq:
     return _client
 
 
+TRANSCRIPTION_PROMPT = (
+    "Nigerian voice banking assistant. Common words: send, withdraw, deposit, "
+    "balance, airtime, naira, thousand, hundred, Adewale, Ngozi, Ibrahim."
+)
+
+
 async def transcribe_audio(audio_bytes: bytes, filename: str, language_hint: Optional[str] = None) -> str:
     client = _get_client()
     kwargs = {}
@@ -28,8 +34,9 @@ async def transcribe_audio(audio_bytes: bytes, filename: str, language_hint: Opt
         kwargs["language"] = language_hint
     transcription = client.audio.transcriptions.create(
         file=(filename or "audio.webm", audio_bytes),
-        model="whisper-large-v3-turbo",  # fast tier; use "whisper-large-v3" for max accuracy over speed
+        model="whisper-large-v3",  # full model — noticeably more accurate on Yoruba/Hausa/Igbo than the -turbo tier, worth the extra latency
         response_format="json",
+        prompt=TRANSCRIPTION_PROMPT,
         **kwargs,
     )
     return transcription.text
