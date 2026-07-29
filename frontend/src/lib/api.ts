@@ -48,11 +48,11 @@ export async function confirmCreate(
   return asJson(res);
 }
 
-export async function confirmAdvance(id: string): Promise<TransactionRecord> {
+export async function confirmAdvance(id: string, voiceFeatureVector?: number[] | null): Promise<TransactionRecord> {
   const res = await fetch(`${API_BASE}/api/transactions/confirm`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id })
+    body: JSON.stringify({ id, voiceFeatureVector: voiceFeatureVector || undefined })
   });
   return asJson(res);
 }

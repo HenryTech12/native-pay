@@ -1,7 +1,7 @@
 import pytest
 
 from app.models import AgentBmoniProfile
-from app.services import bmoni_service, paystack_service, store
+from app.services import bmoni_service, paystack_service, store, voice_auth
 from app.services import transaction_service as ts
 
 FAKE_RESOLVED_NAMES = {
@@ -235,3 +235,53 @@ async def test_withdraw_uses_real_bmoni_chain_when_agent_onboarded(monkeypatch):
     assert calls["initiate"] == ("agent-bmoni-1", "agent-wallet-1", "agent-bank-acct-1", "3000.00")
     assert calls["submit"] == ("agent-bmoni-1", "prop-1", "0xsignature")
     assert store.get_account("onboarded-flow-user").balance == before - 3000
+
+
+def test_strong_voice_match_skips_face_check():
+    """A voice_verified=True confirm goes straight to FACE_VERIFIED,
+    skipping FACE_VERIFICATION_REQUIRED, and is labeled as such."""
+    tx = ts.evaluate_intent("mama-aisha", "send", 5000, "adewale", 0.95)
+    confirmed = ts.confirm_transaction(tx.id, voice_verified=True)
+    assert confirmed.state == ts.STATES["FACE_VERIFIED"]
+    assert confirmed.faceVerified is True
+    assert confirmed.verificationMethod == "voice"
+
+
+def test_weak_voice_match_still_requires_face_check():
+    """Without voice_verified, the mandatory face-check step is unchanged."""
+    tx = ts.evaluate_intent("mama-aisha", "send", 5000, "adewale", 0.95)
+    confirmed = ts.confirm_transaction(tx.id, voice_verified=False)
+    assert confirmed.state == ts.STATES["FACE_VERIFICATION_REQUIRED"]
+    assert confirmed.verificationMethod is None
+
+
+def test_face_verification_records_method():
+    tx = ts.evaluate_intent("mama-aisha", "send", 5000, "adewale", 0.95)
+    ts.confirm_transaction(tx.id)
+    verified = ts.record_face_verification(tx.id, True)
+    assert verified.state == ts.STATES["FACE_VERIFIED"]
+    assert verified.verificationMethod == "face"
+
+
+def test_transaction_voice_threshold_is_stricter_than_login_threshold():
+    """The transaction-time bar must be strictly higher than the login
+    bar, since it authorizes money movement instead of a login shortcut."""
+    assert voice_auth.TRANSACTION_THRESHOLD > voice_auth.THRESHOLD
+
+
+def test_authorize_for_transaction_respects_stricter_threshold(monkeypatch):
+    monkeypatch.setattr(voice_auth, "_voiceprints", {"voice-test-user": [1.0, 0.0]})
+    # A vector identical to the stored print gives similarity 1.0 -- passes.
+    result = voice_auth.authorize_for_transaction("voice-test-user", [1.0, 0.0])
+    assert result["authorized"] is True
+    assert result["threshold"] == voice_auth.TRANSACTION_THRESHOLD
+    # A vector similar enough for login (>=0.85) but below the stricter
+    # transaction bar should fail here even though authorize_by_voice
+    # would accept it.
+    import math
+    angle = math.acos(0.90)
+    skewed = [math.cos(angle), math.sin(angle)]
+    login_result = voice_auth.authorize_by_voice("voice-test-user", skewed)
+    txn_result = voice_auth.authorize_for_transaction("voice-test-user", skewed)
+    assert login_result["authorized"] is True
+    assert txn_result["authorized"] is False

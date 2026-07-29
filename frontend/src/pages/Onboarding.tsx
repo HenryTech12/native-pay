@@ -5,6 +5,7 @@ import { recordAudio, blobToMfccVector } from "../lib/audio";
 import { generateChallenge } from "../lib/challenge";
 import { phrase, speak, LANGUAGES } from "../lib/phrases";
 import DeviceFrame from "../components/DeviceFrame";
+import SpeakingIndicator from "../components/SpeakingIndicator";
 
 type Step = "start" | "name" | "address" | "voiceprint" | "review" | "done";
 
@@ -128,6 +129,7 @@ export default function Onboarding() {
         </header>
 
         <main style={s.main}>
+          <SpeakingIndicator />
           {step === "start" && (
             <>
               <label style={s.label}>Phone number</label>
