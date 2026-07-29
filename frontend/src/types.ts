@@ -36,6 +36,7 @@ export interface TransactionRecord {
   state: TransactionState;
   createdAt: string;
   faceVerified: boolean;
+  verificationMethod?: "face" | "voice" | null;
   bmoniReference: string | null;
   error: string | null;
   needsClarification?: "amount" | "recipient" | "accountNumber";

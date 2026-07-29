@@ -109,12 +109,20 @@ async def resolve_recipient_by_account(tx_id: str, account_number: str, bank_cod
     )
 
 
-def confirm_transaction(tx_id: str) -> Optional[TransactionRecord]:
+def confirm_transaction(tx_id: str, voice_verified: bool = False) -> Optional[TransactionRecord]:
+    """voice_verified=True skips the mandatory face check — only ever
+    set by main.py after a transaction-time voice match clears the
+    stricter TRANSACTION_THRESHOLD (see voice_auth.authorize_for_
+    transaction), never by client-supplied intent alone."""
     tx = store.get_transaction(tx_id)
     if not tx:
         return None
     if tx.state != STATES["CONFIRMATION_REQUIRED"]:
         return tx.model_copy(update={"error": f"Cannot confirm from state {tx.state}"})
+    if voice_verified:
+        return store.update_transaction(
+            tx_id, state=STATES["FACE_VERIFIED"], faceVerified=True, verificationMethod="voice",
+        )
     return store.update_transaction(tx_id, state=STATES["FACE_VERIFICATION_REQUIRED"])
 
 
@@ -131,7 +139,7 @@ def record_face_verification(tx_id: str, matched: bool) -> Optional[TransactionR
         return None
     if not matched:
         return store.update_transaction(tx_id, state=STATES["FACE_VERIFICATION_FAILED"])
-    return store.update_transaction(tx_id, state=STATES["FACE_VERIFIED"], faceVerified=True)
+    return store.update_transaction(tx_id, state=STATES["FACE_VERIFIED"], faceVerified=True, verificationMethod="face")
 
 
 async def execute_transaction(tx_id: str) -> Optional[TransactionRecord]:

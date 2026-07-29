@@ -41,6 +41,7 @@ class TransactionRecord(BaseModel):
     state: TransactionState
     createdAt: str
     faceVerified: bool = False
+    verificationMethod: Optional[Literal["face", "voice"]] = None
     bmoniReference: Optional[str] = None
     error: Optional[str] = None
     needsClarification: Optional[Literal["amount", "recipient", "accountNumber"]] = None

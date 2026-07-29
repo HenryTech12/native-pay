@@ -93,6 +93,7 @@ class ConfirmBody(BaseModel):
     amount: Optional[int] = None
     recipient: Optional[str] = None
     confidence: Optional[float] = None
+    voiceFeatureVector: Optional[list[float]] = None
 
 
 @app.post("/api/transactions/confirm")
@@ -112,7 +113,12 @@ def transactions_confirm(body: ConfirmBody):
         raise HTTPException(status_code=404, detail={"error": "TRANSACTION_NOT_FOUND"})
     if existing.state != STATES["CONFIRMATION_REQUIRED"]:
         raise HTTPException(status_code=409, detail={"error": "INVALID_STATE", "state": existing.state})
-    return transaction_service.confirm_transaction(body.id)
+
+    voice_verified = False
+    if body.voiceFeatureVector:
+        result = voice_auth.authorize_for_transaction(existing.userId, body.voiceFeatureVector)
+        voice_verified = result["authorized"]
+    return transaction_service.confirm_transaction(body.id, voice_verified=voice_verified)
 
 
 @app.post("/api/transactions/{tx_id}/cancel")

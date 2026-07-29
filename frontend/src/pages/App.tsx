@@ -10,6 +10,7 @@ import { recordAudio, blobToMfccVector } from "../lib/audio";
 import { generateChallenge } from "../lib/challenge";
 import { phrase, speak, LANGUAGES } from "../lib/phrases";
 import DeviceFrame from "../components/DeviceFrame";
+import SpeakingIndicator from "../components/SpeakingIndicator";
 import type { TransactionRecord, Receipt, Action, Bank } from "../types";
 
 type Step =
@@ -93,6 +94,7 @@ export default function App() {
 
   const recorderRef = useRef<{ stop: () => void; result: Promise<Blob> } | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const voiceVectorRef = useRef<number[] | null>(null);
 
   useEffect(() => {
     if (step === "clarify" && tx?.needsClarification === "accountNumber" && banks.length === 0) {
@@ -116,6 +118,7 @@ export default function App() {
   function resetAll() {
     setTx(null); setReceipt(null); setTranscript(""); setBalance(null);
     setAccountNumberInput(""); setAccountNumberError(""); setBankCode("");
+    voiceVectorRef.current = null;
     setStep("listen");
   }
 
@@ -239,7 +242,11 @@ export default function App() {
         setIsRecording(false);
         try {
           const langCode = LANGUAGES[langIdx].code;
-          const { text, intent } = await voiceProcess(blob, langCode);
+          const [{ text, intent }, vector] = await Promise.all([
+            voiceProcess(blob, langCode),
+            blobToMfccVector(blob),
+          ]);
+          voiceVectorRef.current = vector;
           setTranscript(text);
           await handleIntent(intent);
         } catch {
@@ -299,10 +306,37 @@ export default function App() {
     resetAll();
   }
 
+  async function finalizeTransaction(txId: string) {
+    setStep("processing");
+    const sent = await sendTransaction(txId);
+    setTx(sent);
+
+    if (sent.state !== "TRANSACTION_SUCCESS") {
+      setErrorCode(sent.state === "BMONI_API_ERROR" ? "BMONI_API_ERROR" : "TRANSACTION_FAILED");
+      setStep("error");
+      return;
+    }
+
+    const r = await getReceipt(sent.id);
+    setReceipt(r);
+    const lang = LANGUAGES[langIdx].code;
+    await speak(successPhraseFor(lang, sent.action, sent.amount, sent.recipient), lang);
+    setStep("receipt");
+  }
+
   async function onConfirm() {
     if (!tx) return;
-    const advanced = await confirmAdvance(tx.id);
+    const advanced = await confirmAdvance(tx.id, voiceVectorRef.current || undefined);
     setTx(advanced);
+
+    if (advanced.state === "FACE_VERIFIED") {
+      // The same recording used for the spoken command already cleared
+      // the stricter transaction-time voice match — face check skipped.
+      const lang = LANGUAGES[langIdx].code;
+      await speak(phrase(lang, "voiceVerifiedSkipFace"), lang);
+      await finalizeTransaction(advanced.id);
+      return;
+    }
     setStep("face");
   }
 
@@ -319,22 +353,7 @@ export default function App() {
       setStep("error");
       return;
     }
-
-    setStep("processing");
-    const sent = await sendTransaction(tx.id);
-    setTx(sent);
-
-    if (sent.state !== "TRANSACTION_SUCCESS") {
-      setErrorCode(sent.state === "BMONI_API_ERROR" ? "BMONI_API_ERROR" : "TRANSACTION_FAILED");
-      setStep("error");
-      return;
-    }
-
-    const r = await getReceipt(sent.id);
-    setReceipt(r);
-    const lang = LANGUAGES[langIdx].code;
-    await speak(successPhraseFor(lang, sent.action, sent.amount, sent.recipient), lang);
-    setStep("receipt");
+    await finalizeTransaction(verified.id);
   }
 
   function downloadReceipt() {
@@ -378,6 +397,7 @@ export default function App() {
         </header>
 
         <main style={s.main}>
+          <SpeakingIndicator />
           {step === "card" && (
             <div style={s.micStage}>
               <div style={{ ...s.cardVisual, ...(inserting ? s.cardVisualInserting : {}) }}>

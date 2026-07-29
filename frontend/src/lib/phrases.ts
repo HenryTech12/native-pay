@@ -17,6 +17,7 @@ type Phrases = {
   welcomeBack: (name: string) => string;
   voiceAuthStepUp: () => string;
   voiceAuthFailed: () => string;
+  voiceVerifiedSkipFace: () => string;
   enrollmentComplete: () => string;
 };
 
@@ -38,6 +39,7 @@ const T: Record<string, Phrases> = {
     welcomeBack: (n) => `Welcome back, ${n}.`,
     voiceAuthStepUp: () => "I'm not fully sure that's you. Let's do a quick face check.",
     voiceAuthFailed: () => "I couldn't verify your identity. Please speak with the agent.",
+    voiceVerifiedSkipFace: () => "Your voice confirms it's you — no face check needed this time.",
     enrollmentComplete: () => "You're all set. You can now use NativePay with your voice."
   },
   pcm: {
@@ -57,6 +59,7 @@ const T: Record<string, Phrases> = {
     welcomeBack: (n) => `Welcome back, ${n}.`,
     voiceAuthStepUp: () => "I no too sure say na you. Make we quick check your face.",
     voiceAuthFailed: () => "I no fit confam say na you by voice. Abeg talk to the agent.",
+    voiceVerifiedSkipFace: () => "Your voice don confam say na you — no need to check face this time.",
     enrollmentComplete: () => "You don set. You fit dey use NativePay with your voice now."
   },
   yo: {
@@ -76,6 +79,7 @@ const T: Record<string, Phrases> = {
     welcomeBack: (n) => `Kú àbọ̀, ${n}.`,
     voiceAuthStepUp: () => "Èmi kò dá mi lójú pé ìwọ ni. Ẹ jẹ́ kí a ṣàyẹ̀wò ojú rẹ ní kíákíá.",
     voiceAuthFailed: () => "N kò lè fi ohùn rẹ jẹ́rìí sí ẹni tí ìwọ jẹ́. Jọ̀wọ́ bá aṣojú sọ̀rọ̀.",
+    voiceVerifiedSkipFace: () => "Ohùn rẹ ti jẹ́rìí pé ìwọ ni — a kò nílò ṣàyẹ̀wò ojú ní àkókò yìí.",
     enrollmentComplete: () => "O ti ṣetán. O lè bẹ̀rẹ̀ sí lo NativePay pẹ̀lú ohùn rẹ."
   },
   ha: {
@@ -95,6 +99,7 @@ const T: Record<string, Phrases> = {
     welcomeBack: (n) => `Barka da dawowa, ${n}.`,
     voiceAuthStepUp: () => "Ban tabbata sarai ba cewa kai ne. Bari mu yi saurin duba fuska.",
     voiceAuthFailed: () => "Ban iya tabbatar da ainihinka ta murya ba. Don Allah ka tuntuɓi wakili.",
+    voiceVerifiedSkipFace: () => "Muryarka ta tabbatar da cewa kai ne — ba a bukatar duba fuska a wannan lokacin.",
     enrollmentComplete: () => "An gama. Yanzu kana iya amfani da NativePay ta murya."
   },
   ig: {
@@ -114,6 +119,7 @@ const T: Record<string, Phrases> = {
     welcomeBack: (n) => `Nnọọ, ${n}.`,
     voiceAuthStepUp: () => "Ejighị m n'aka na ọ bụ gị. Ka anyị mee nyocha ihu ngwa ngwa.",
     voiceAuthFailed: () => "Enweghị m ike iji olu gị kwado onye ị bụ. Biko gwa onye nnọchite anya.",
+    voiceVerifiedSkipFace: () => "Olu gị akwadola na ọ bụ gị — anaghị achọ nyocha ihu oge a.",
     enrollmentComplete: () => "Emechaala. Ị nwere ike iji olu gị bido iji NativePay ugbu a."
   }
 };
@@ -122,6 +128,24 @@ export function phrase<K extends keyof Phrases>(lang: string, key: K, ...args: P
   const dict = T[lang] || T.en;
   const fn = dict[key] || T.en[key];
   return (fn as (...a: any[]) => string)(...args);
+}
+
+type SpeakingListener = (speaking: boolean) => void;
+const speakingListeners = new Set<SpeakingListener>();
+let isSpeakingNow = false;
+
+function setSpeaking(value: boolean) {
+  isSpeakingNow = value;
+  speakingListeners.forEach((l) => l(value));
+}
+
+/** Subscribe to know whenever speak() is actively playing audio — used
+ * to show a "speaking" indicator so users aren't left guessing whether
+ * to wait or act while the voice prompt is still in flight. */
+export function subscribeSpeaking(listener: SpeakingListener): () => void {
+  speakingListeners.add(listener);
+  listener(isSpeakingNow);
+  return () => { speakingListeners.delete(listener); };
 }
 
 function speakWithBrowserVoice(text: string): Promise<void> {
@@ -144,6 +168,7 @@ function speakWithBrowserVoice(text: string): Promise<void> {
  * moving the UI on to the next step, not just that playback started.
  */
 export async function speak(text: string, lang: string = "en") {
+  setSpeaking(true);
   try {
     const blob = await synthesizeSpeech(text, lang);
     const url = URL.createObjectURL(blob);
@@ -155,6 +180,8 @@ export async function speak(text: string, lang: string = "en") {
     });
   } catch {
     await speakWithBrowserVoice(text);
+  } finally {
+    setSpeaking(false);
   }
 }
 
