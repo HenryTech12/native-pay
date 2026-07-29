@@ -3,16 +3,22 @@ import { Link } from "react-router-dom";
 import {
   voiceProcess, confirmCreate, confirmAdvance, cancelTransaction,
   verifyFace, sendTransaction, getReceipt, getBalance,
-  authorizeVoice, getVoiceStatus, getAccount
+  authorizeVoice, getVoiceStatus, getAccount, getAccountByCard
 } from "../lib/api";
 import { recordAudio, blobToMfccVector } from "../lib/audio";
 import { generateChallenge } from "../lib/challenge";
 import { phrase, speak, LANGUAGES } from "../lib/phrases";
+import DeviceFrame from "../components/DeviceFrame";
 import type { TransactionRecord, Receipt, Action } from "../types";
 
 type Step =
-  | "start" | "auth" | "faceAuth" | "authFailed"
+  | "card" | "start" | "auth" | "faceAuth" | "authFailed"
   | "listen" | "confirm" | "clarify" | "error" | "face" | "processing" | "balance" | "receipt";
+
+function formatCardNumber(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, 16);
+  return digits.replace(/(.{4})/g, "$1 ").trim();
+}
 
 const ERROR_MESSAGES: Record<string, string> = {
   INVALID_AMOUNT: "That amount doesn't look right. Please say an amount greater than zero.",
@@ -25,7 +31,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 };
 
 export default function App() {
-  const [step, setStep] = useState<Step>("start");
+  const [step, setStep] = useState<Step>("card");
   const [userId, setUserId] = useState("mama-aisha");
   const [langIdx, setLangIdx] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
@@ -35,6 +41,9 @@ export default function App() {
   const [balance, setBalance] = useState<number | null>(null);
   const [errorCode, setErrorCode] = useState<string>("default");
 
+  const [cardNumber, setCardNumber] = useState("");
+  const [cardError, setCardError] = useState("");
+  const [inserting, setInserting] = useState(false);
   const [challenge, setChallenge] = useState<{ digits: string; spoken: string } | null>(null);
   const [authStatus, setAuthStatus] = useState("");
 
@@ -59,11 +68,10 @@ export default function App() {
     setStep("listen");
   }
 
-  async function beginAuth() {
+  async function startSession(forUserId: string, forLang: string) {
     setAuthStatus("");
-    const lang = LANGUAGES[langIdx].code;
     try {
-      const { registered } = await getVoiceStatus(userId);
+      const { registered } = await getVoiceStatus(forUserId);
       if (!registered) {
         setStep("faceAuth");
         return;
@@ -72,10 +80,33 @@ export default function App() {
       setAuthStatus("Couldn't reach the backend — check it's running.");
       return;
     }
-    const c = generateChallenge(lang);
+    const c = generateChallenge(forLang);
     setChallenge(c);
     setStep("auth");
-    speak(phrase(lang, "askRepeatDigits", c.spoken));
+    speak(phrase(forLang, "askRepeatDigits", c.spoken), forLang);
+  }
+
+  async function onSubmitCard() {
+    setCardError("");
+    setInserting(true);
+    await new Promise((resolve) => setTimeout(resolve, 550)); // let the card-insert animation play out
+    try {
+      const account = await getAccountByCard(cardNumber);
+      const idx = LANGUAGES.findIndex((l) => l.code === account.preferredLanguage);
+      const lang = idx >= 0 ? account.preferredLanguage : LANGUAGES[langIdx].code;
+      setUserId(account.id);
+      if (idx >= 0) setLangIdx(idx);
+      await startSession(account.id, lang);
+    } catch {
+      setCardError("Card not recognized. Check the number, or enter your phone number manually.");
+    } finally {
+      setInserting(false);
+    }
+  }
+
+  function onKeypadPress(key: string) {
+    if (step !== "card" || !/\d/.test(key)) return;
+    setCardNumber((prev) => formatCardNumber(prev.replace(/\D/g, "") + key));
   }
 
   async function toggleAuthRecording() {
@@ -95,13 +126,13 @@ export default function App() {
         if (result.authorized) {
           try {
             const account = await getAccount(userId);
-            speak(phrase(lang, "welcomeBack", account.name));
+            speak(phrase(lang, "welcomeBack", account.name), lang);
           } catch {
             /* welcome message is a nicety — proceed either way */
           }
           setStep("listen");
         } else {
-          speak(phrase(lang, "voiceAuthStepUp"));
+          speak(phrase(lang, "voiceAuthStepUp"), lang);
           setStep("faceAuth");
         }
       } catch {
@@ -118,7 +149,7 @@ export default function App() {
       setStep("listen");
       return;
     }
-    speak(phrase(LANGUAGES[langIdx].code, "voiceAuthFailed"));
+    speak(phrase(LANGUAGES[langIdx].code, "voiceAuthFailed"), LANGUAGES[langIdx].code);
     setStep("authFailed");
   }
 
@@ -156,7 +187,7 @@ export default function App() {
   async function handleIntent(intent: { action: Action; amount: number | null; recipient: string | null; confidence: number }) {
     if (intent.action === "balance") {
       const b = await getBalance(userId);
-      speak(phrase(LANGUAGES[langIdx].code, "balance", b.balance));
+      speak(phrase(LANGUAGES[langIdx].code, "balance", b.balance), LANGUAGES[langIdx].code);
       setBalance(b.balance);
       setStep("balance");
       return;
@@ -179,7 +210,7 @@ export default function App() {
       const say = created.action === "send"
         ? phrase(lang, "confirmSend", created.amount || 0, created.recipient || "")
         : phrase(lang, "confirmWithdraw", created.amount || 0);
-      speak(say);
+      speak(say, lang);
       setStep("confirm");
       return;
     }
@@ -228,7 +259,7 @@ export default function App() {
     const lang = LANGUAGES[langIdx].code;
     speak(sent.action === "send"
       ? phrase(lang, "successSend", sent.amount || 0, sent.recipient || "")
-      : phrase(lang, "successWithdraw", sent.amount || 0));
+      : phrase(lang, "successWithdraw", sent.amount || 0), lang);
     setStep("receipt");
   }
 
@@ -243,6 +274,7 @@ export default function App() {
   }
 
   const titles: Record<Step, [string, string]> = {
+    card: ["NativePay", "Insert your card to begin."],
     start: ["NativePay", "Enter your phone number and pick your language to begin."],
     auth: ["Verify it's you", "Repeat the numbers you hear."],
     faceAuth: ["One more check", "A quick face check confirms it's you."],
@@ -259,7 +291,7 @@ export default function App() {
   const [title, sub] = titles[step];
 
   return (
-    <div style={s.body}>
+    <DeviceFrame showReceiptPrint={step === "receipt"} cardSlotActive={inserting} onKeypadPress={onKeypadPress}>
       <div style={s.appCard}>
         <header style={s.header}>
           <div style={s.topRow}>
@@ -271,6 +303,29 @@ export default function App() {
         </header>
 
         <main style={s.main}>
+          {step === "card" && (
+            <div style={s.micStage}>
+              <div style={{ ...s.cardVisual, ...(inserting ? s.cardVisualInserting : {}) }}>
+                <div style={s.cardChip} />
+                <div style={s.cardNumberDisplay}>{cardNumber || "•••• •••• •••• ••••"}</div>
+              </div>
+              <input
+                style={s.input}
+                value={cardNumber}
+                onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
+                placeholder="Card number"
+                maxLength={19}
+                disabled={inserting}
+              />
+              {cardError && <div style={s.cardErrorText}>{cardError}</div>}
+              <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} disabled={inserting || cardNumber.replace(/\D/g, "").length < 16} onClick={onSubmitCard}>{inserting ? "Inserting..." : "Insert card"}</button>
+              <div style={s.quickRow}>
+                <span style={s.quickBtn} onClick={() => setCardNumber("5060 0000 0000 0001")}>Use demo card (Mama Aisha)</span>
+              </div>
+              <div style={s.hint}>No card? <span style={s.linkText} onClick={() => setStep("start")}>Enter phone number manually</span></div>
+            </div>
+          )}
+
           {step === "start" && (
             <>
               <label style={s.label}>Phone number or name</label>
@@ -281,8 +336,11 @@ export default function App() {
                 ))}
               </div>
               <div style={s.micStage}>
-                <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} disabled={!userId.trim()} onClick={beginAuth}>Continue</button>
-                <div style={s.hint}>New here? <Link to="/onboarding" style={{ color: "var(--indigo)", fontWeight: 700 }}>Create an account</Link></div>
+                <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} disabled={!userId.trim()} onClick={() => startSession(userId, LANGUAGES[langIdx].code)}>Continue</button>
+                <div style={s.hint}>
+                  <span style={s.linkText} onClick={() => setStep("card")}>Insert card instead</span>
+                  {" · "}New here? <Link to="/onboarding" style={{ color: "var(--indigo)", fontWeight: 700 }}>Create an account</Link>
+                </div>
               </div>
             </>
           )}
@@ -311,7 +369,7 @@ export default function App() {
             <>
               <div style={s.errorCard}>We couldn't verify it's you by voice or face. Please speak with the agent for help.</div>
               <div style={s.actionRow}>
-                <button style={{ ...s.btn, ...s.btnPrimary, flex: 1 }} onClick={() => setStep("start")}>Try again</button>
+                <button style={{ ...s.btn, ...s.btnPrimary, flex: 1 }} onClick={() => setStep("card")}>Try again</button>
               </div>
             </>
           )}
@@ -427,12 +485,17 @@ export default function App() {
           <Link to="/history" style={s.resetLink}>History</Link>
         </footer>
       </div>
-    </div>
+    </DeviceFrame>
   );
 }
 
 const s: Record<string, React.CSSProperties> = {
-  body: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 },
+  cardVisual: { width: "100%", aspectRatio: "1.586", maxHeight: 150, borderRadius: 16, background: "linear-gradient(135deg, var(--indigo) 0%, var(--indigo-deep) 100%)", padding: 18, display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: "0 10px 24px rgba(19,28,59,0.25)" },
+  cardVisualInserting: { animation: "cardInsert 550ms ease-in forwards" },
+  cardChip: { width: 34, height: 26, borderRadius: 5, background: "linear-gradient(135deg, var(--gold-light), var(--gold))" },
+  cardNumberDisplay: { fontFamily: "monospace", fontSize: 17, letterSpacing: "0.06em", color: "var(--paper)" },
+  cardErrorText: { color: "var(--alert)", fontSize: "12.5px", textAlign: "center" },
+  linkText: { color: "var(--indigo)", fontWeight: 700, cursor: "pointer", textDecoration: "underline" },
   appCard: { width: "100%", maxWidth: 460, background: "#fff", borderRadius: 22, overflow: "hidden", boxShadow: "0 20px 60px rgba(19,28,59,0.18)", border: "1px solid var(--line)" },
   header: { background: "var(--indigo)", color: "var(--paper)", padding: "20px 26px 16px", position: "relative", overflow: "hidden" },
   topRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },

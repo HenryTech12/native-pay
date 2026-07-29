@@ -34,7 +34,7 @@ _PHRASES = {
         "networkError": "Network wahala dey. Check your connection try again.",
     },
     "yo": {
-        "confirmSend": lambda amt, name: f"O fẹ́ fi ẹgbẹ̀rún {amt} ránṣẹ́ sí {name}. Ṣé kí n tẹ̀síwájú?",
+        "confirmSend": lambda amt, name: f"O fẹ́ fi {amt} náírà ránṣẹ́ sí {name}. Ṣé kí n tẹ̀síwájú?",
         "confirmWithdraw": lambda amt: f"O fẹ́ yọ {amt} náírà kúrò. Ṣé kí n tẹ̀síwájú?",
         "successSend": lambda amt, name: f"A ti fi {amt} náírà ránṣẹ́ sí {name} ní àṣeyọrí.",
         "successWithdraw": lambda amt: f"Yíyọ {amt} náírà ṣàṣeyọrí.",

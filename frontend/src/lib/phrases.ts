@@ -1,3 +1,5 @@
+import { synthesizeSpeech } from "./api";
+
 type Phrases = {
   confirmSend: (amt: number, name: string) => string;
   confirmWithdraw: (amt: number) => string;
@@ -43,7 +45,7 @@ const T: Record<string, Phrases> = {
     enrollmentComplete: () => "You don set. You fit dey use NativePay with your voice now."
   },
   yo: {
-    confirmSend: (a, n) => `O fẹ́ fi ẹgbẹ̀rún ${a} ránṣẹ́ sí ${n}. Ṣé kí n tẹ̀síwájú?`,
+    confirmSend: (a, n) => `O fẹ́ fi ${a} náírà ránṣẹ́ sí ${n}. Ṣé kí n tẹ̀síwájú?`,
     confirmWithdraw: (a) => `O fẹ́ yọ ${a} náírà kúrò. Ṣé kí n tẹ̀síwájú?`,
     successSend: (a, n) => `A ti fi ${a} náírà ránṣẹ́ sí ${n} ní àṣeyọrí.`,
     successWithdraw: (a) => `Yíyọ ${a} náírà ṣàṣeyọrí.`,
@@ -92,11 +94,30 @@ export function phrase<K extends keyof Phrases>(lang: string, key: K, ...args: P
   return (fn as (...a: any[]) => string)(...args);
 }
 
-export function speak(text: string) {
+function speakWithBrowserVoice(text: string) {
   if (!window.speechSynthesis) return;
   const u = new SpeechSynthesisUtterance(text);
   u.rate = 0.95;
   window.speechSynthesis.speak(u);
+}
+
+/**
+ * Nigerian-accented read-back via YarnGPT (see backend/app/services/
+ * yarngpt_service.py), falling back to the browser's generic
+ * speechSynthesis if the API key isn't configured or the call fails —
+ * this is a nicety, not something that should ever block the flow.
+ */
+export async function speak(text: string, lang: string = "en") {
+  try {
+    const blob = await synthesizeSpeech(text, lang);
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audio.onended = () => URL.revokeObjectURL(url);
+    audio.onerror = () => URL.revokeObjectURL(url);
+    await audio.play();
+  } catch {
+    speakWithBrowserVoice(text);
+  }
 }
 
 export const LANGUAGES = [

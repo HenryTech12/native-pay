@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { listTransactions } from "../lib/api";
+import DeviceFrame from "../components/DeviceFrame";
 import type { TransactionRecord } from "../types";
 
 function stateColor(state: string): string {
@@ -24,31 +25,47 @@ export default function History() {
   }, []);
 
   return (
-    <div style={{ minHeight: "100vh", padding: 24, fontFamily: "Inter, sans-serif", color: "#241F1A" }}>
-      <div style={{ maxWidth: 560, margin: "0 auto" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <h1 style={{ fontFamily: "Fraunces, serif", color: "#1E2A52", fontSize: 24, margin: 0 }}>Transaction history</h1>
-          <Link to="/app" style={{ fontSize: 13, color: "#1E2A52", fontWeight: 600, textDecoration: "none" }}>← Back to app</Link>
-        </div>
-
-        {error && <div style={{ color: "#8a8175", fontSize: "13.5px", textAlign: "center", padding: "30px 0" }}>Couldn't reach the NativePay backend. Check it's running.</div>}
-        {!error && txs === null && <div style={{ color: "#8a8175", fontSize: "13.5px", textAlign: "center", padding: "30px 0" }}>Loading...</div>}
-        {txs && txs.length === 0 && <div style={{ color: "#8a8175", fontSize: "13.5px", textAlign: "center", padding: "30px 0" }}>No transactions yet — try the demo.</div>}
-
-        {txs && txs.map((tx) => (
-          <div key={tx.id} style={{ background: "#fff", border: "1px solid rgba(36,31,26,0.14)", borderRadius: 14, padding: 16, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: 14.5 }}>
-                {actionLabel(tx.action)}{tx.amount ? ` ₦${tx.amount.toLocaleString()}` : ""}{tx.recipient ? ` to ${tx.recipient}` : ""}
-              </div>
-              <div style={{ fontSize: 12, color: "#8a8175", marginTop: 2 }}>{tx.id} · {new Date(tx.createdAt).toLocaleString()}</div>
-            </div>
-            <span style={{ fontSize: 10, fontWeight: 700, padding: "4px 9px", borderRadius: 100, color: "#fff", background: stateColor(tx.state), whiteSpace: "nowrap" }}>
-              {tx.state.replace(/_/g, " ")}
-            </span>
+    <DeviceFrame>
+      <div style={s.card}>
+        <header style={s.header}>
+          <div style={s.topRow}>
+            <Link to="/app" style={s.backLink}>← Back to app</Link>
           </div>
-        ))}
+          <h1 style={s.h1}>Transaction history</h1>
+        </header>
+
+        <main style={s.main}>
+          {error && <div style={s.hint}>Couldn't reach the NativePay backend. Check it's running.</div>}
+          {!error && txs === null && <div style={s.hint}>Loading...</div>}
+          {txs && txs.length === 0 && <div style={s.hint}>No transactions yet — try the demo.</div>}
+
+          {txs && txs.map((tx) => (
+            <div key={tx.id} style={s.txRow}>
+              <div>
+                <div style={s.txTitle}>
+                  {actionLabel(tx.action)}{tx.amount ? ` ₦${tx.amount.toLocaleString()}` : ""}{tx.recipient ? ` to ${tx.recipient}` : ""}
+                </div>
+                <div style={s.txMeta}>{tx.id} · {new Date(tx.createdAt).toLocaleString()}</div>
+              </div>
+              <span style={{ ...s.badge, background: stateColor(tx.state) }}>{tx.state.replace(/_/g, " ")}</span>
+            </div>
+          ))}
+        </main>
       </div>
-    </div>
+    </DeviceFrame>
   );
 }
+
+const s: Record<string, React.CSSProperties> = {
+  card: { width: "100%", maxWidth: 460, background: "#fff", borderRadius: 22, overflow: "hidden", boxShadow: "0 20px 60px rgba(19,28,59,0.18)", border: "1px solid var(--line)" },
+  header: { background: "var(--indigo)", color: "var(--paper)", padding: "20px 26px 16px" },
+  topRow: { marginBottom: 10 },
+  backLink: { color: "var(--gold-light)", fontSize: 12, textDecoration: "none" },
+  h1: { fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 21, margin: 0 },
+  main: { padding: "24px 26px" },
+  hint: { color: "#8a8175", fontSize: "13.5px", textAlign: "center", padding: "30px 0" },
+  txRow: { background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 14, padding: 16, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" },
+  txTitle: { fontWeight: 600, fontSize: 14.5 },
+  txMeta: { fontSize: 12, color: "#8a8175", marginTop: 2 },
+  badge: { fontSize: 10, fontWeight: 700, padding: "4px 9px", borderRadius: 100, color: "#fff", whiteSpace: "nowrap" }
+};

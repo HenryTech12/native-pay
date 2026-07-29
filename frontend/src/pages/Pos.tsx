@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { getTransaction } from "../lib/api";
+import DeviceFrame from "../components/DeviceFrame";
 import type { TransactionRecord } from "../types";
 
 function stateClass(state: string): "ok" | "err" | "pending" {
@@ -28,54 +30,73 @@ export default function Pos() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", padding: 24, fontFamily: "Inter, sans-serif", color: "#241F1A" }}>
-      <div style={{ maxWidth: 640, margin: "0 auto" }}>
-        <h1 style={{ fontFamily: "Fraunces, serif", color: "#1E2A52", fontSize: 24 }}>NativePay — POS Agent View</h1>
-        <p style={{ fontSize: 13, color: "#6b6357", marginBottom: 20 }}>
-          Track a customer's transaction status here. The agent never sees the customer's transcript, biometric data, or account credentials — only status.
-        </p>
+    <DeviceFrame onKeypadPress={(k) => /\d/.test(k) && setTxId((prev) => prev + k)}>
+      <div style={s.card}>
+        <header style={s.header}>
+          <div style={s.topRow}>
+            <Link to="/" style={s.backLink}>← NativePay</Link>
+          </div>
+          <h1 style={s.h1}>POS Agent View</h1>
+          <p style={s.sub}>Track a customer's transaction status here. The agent never sees the customer's transcript, biometric data, or account credentials — only status.</p>
+        </header>
 
-        <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
-          <input
-            value={txId}
-            onChange={(e) => setTxId(e.target.value)}
-            placeholder="Transaction ID (e.g. NP-2026-123456)"
-            style={{ flex: 1, padding: 12, borderRadius: 10, border: "1px solid rgba(36,31,26,0.14)", fontSize: 14 }}
-          />
-          <button onClick={lookup} style={{ padding: "12px 18px", borderRadius: 10, border: "none", background: "#1E2A52", color: "#fff", fontWeight: 700, cursor: "pointer" }}>
-            Look up
-          </button>
-        </div>
+        <main style={s.main}>
+          <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+            <input
+              value={txId}
+              onChange={(e) => setTxId(e.target.value)}
+              placeholder="Transaction ID (e.g. NP-2026-123456)"
+              style={s.input}
+            />
+            <button onClick={lookup} style={{ ...s.btn, ...s.btnPrimary }}>Look up</button>
+          </div>
 
-        {notFound && <div style={{ color: "#8a8175", fontSize: "13.5px", textAlign: "center", padding: "30px 0" }}>No transaction found — check the ID, or the backend may not be reachable.</div>}
+          {notFound && <div style={s.hint}>No transaction found — check the ID, or the backend may not be reachable.</div>}
 
-        {tx && (
-          <>
-            <Card label="Status">
-              <span style={{ display: "inline-block", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 100, color: "#fff", background: badgeColors[stateClass(tx.state)] }}>
-                {tx.state.replace(/_/g, " ")}
-              </span>
-            </Card>
-            <Card label="Type">{tx.action === "send" ? "Send money" : tx.action === "withdraw" ? "Withdraw cash" : "Balance check"}</Card>
-            <Card label="Amount">{tx.amount ? `₦${tx.amount.toLocaleString()}` : "—"}</Card>
-            <Card label="Face verification">{tx.faceVerified ? "✓ Verified" : "Not yet verified"}</Card>
-            <Card label="Started">{new Date(tx.createdAt).toLocaleString()}</Card>
-          </>
-        )}
+          {tx && (
+            <>
+              <Card label="Status">
+                <span style={{ display: "inline-block", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 100, color: "#fff", background: badgeColors[stateClass(tx.state)] }}>
+                  {tx.state.replace(/_/g, " ")}
+                </span>
+              </Card>
+              <Card label="Type">{tx.action === "send" ? "Send money" : tx.action === "withdraw" ? "Withdraw cash" : "Balance check"}</Card>
+              <Card label="Amount">{tx.amount ? `₦${tx.amount.toLocaleString()}` : "—"}</Card>
+              <Card label="Face verification">{tx.faceVerified ? "✓ Verified" : "Not yet verified"}</Card>
+              <Card label="Started">{new Date(tx.createdAt).toLocaleString()}</Card>
+            </>
+          )}
 
-        <div style={{ fontSize: "11.5px", color: "#a08a5f", background: "#fbf3e2", border: "1px dashed #d9b978", padding: "8px 12px", borderRadius: 8, marginTop: 20 }}>
-          Demo/sandbox mode. This view is read-only status — it facilitates the session, it does not control the customer's account.
-        </div>
+          <div style={s.mockNote}>Demo/sandbox mode. This view is read-only status — it facilitates the session, it does not control the customer's account.</div>
+        </main>
       </div>
-    </div>
+    </DeviceFrame>
   );
 }
 
 function Card({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={{ background: "#fff", border: "1px solid rgba(36,31,26,0.14)", borderRadius: 14, padding: 18, marginBottom: 14 }}>
-      <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", color: "#8a8175", marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 16, fontWeight: 600 }}>{children}</div>
+    <div style={s.cardRow}>
+      <div style={s.cardLabel}>{label}</div>
+      <div style={s.cardValue}>{children}</div>
     </div>
   );
 }
+
+const s: Record<string, React.CSSProperties> = {
+  card: { width: "100%", maxWidth: 460, background: "#fff", borderRadius: 22, overflow: "hidden", boxShadow: "0 20px 60px rgba(19,28,59,0.18)", border: "1px solid var(--line)" },
+  header: { background: "var(--indigo)", color: "var(--paper)", padding: "20px 26px 16px" },
+  topRow: { marginBottom: 10 },
+  backLink: { color: "var(--gold-light)", fontSize: 12, textDecoration: "none" },
+  h1: { fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 21, margin: "0 0 4px" },
+  sub: { margin: 0, fontSize: 12, color: "rgba(245,239,226,0.75)" },
+  main: { padding: "24px 26px" },
+  input: { flex: 1, padding: 12, borderRadius: 10, border: "1px solid var(--line)", fontSize: 14 },
+  btn: { padding: "12px 18px", borderRadius: 10, border: "none", fontWeight: 700, cursor: "pointer" },
+  btnPrimary: { background: "var(--indigo)", color: "#fff" },
+  hint: { color: "#8a8175", fontSize: "13.5px", textAlign: "center", padding: "30px 0" },
+  cardRow: { background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 14, padding: 18, marginBottom: 14 },
+  cardLabel: { fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", color: "#8a8175", marginBottom: 4 },
+  cardValue: { fontSize: 16, fontWeight: 600 },
+  mockNote: { fontSize: "10.5px", color: "#a08a5f", background: "#fbf3e2", border: "1px dashed #d9b978", padding: "8px 12px", borderRadius: 8, marginTop: 20, textAlign: "center" }
+};
