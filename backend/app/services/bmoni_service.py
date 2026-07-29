@@ -85,6 +85,34 @@ def _owner_account() -> Account:
     return Account.from_key(OWNER_PRIVATE_KEY)
 
 
+async def list_users(page: int = 1, limit: int = 100) -> dict:
+    if MOCK_MODE:
+        await asyncio.sleep(0.1)
+        return {"users": [], "total": 0, "page": page}
+    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers(), timeout=REQUEST_TIMEOUT) as client:
+        res = await client.get("/v1/users", params={"page": page, "limit": limit})
+        if res.status_code >= 400:
+            raise RuntimeError(f"BMONI list_users failed ({res.status_code}): {res.text}")
+        return res.json()
+
+
+async def find_user_by_identity(email: Optional[str] = None, phone_number: Optional[str] = None, max_pages: int = 5) -> Optional[dict]:
+    """Paginates GET /v1/users looking for a match — used to recover the
+    bmoniUserId when create_user hits a 409 because a prior attempt's
+    response was lost (e.g. a Cloudflare gateway timeout) even though
+    BMONI's side actually created the user."""
+    for page in range(1, max_pages + 1):
+        body = await list_users(page=page, limit=100)
+        for user in body.get("users", []):
+            if email and user.get("email") == email:
+                return user
+            if phone_number and user.get("phoneNumber") == phone_number:
+                return user
+        if page * 100 >= body.get("total", 0):
+            break
+    return None
+
+
 async def create_user(
     first_name: str, email: str, phone_number: str, bvn: Optional[str] = None,
 ) -> dict:
@@ -98,9 +126,17 @@ async def create_user(
         body["bvn"] = bvn
     async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers(), timeout=REQUEST_TIMEOUT) as client:
         res = await client.post("/v1/users", json=body)
-        if res.status_code >= 400:
+        if res.status_code == 409:
+            conflict_body = res.text
+        elif res.status_code >= 400:
             raise RuntimeError(f"BMONI create_user failed ({res.status_code}): {res.text}")
-        return res.json()
+        else:
+            return res.json()
+
+    existing = await find_user_by_identity(email=email, phone_number=phone_number)
+    if existing:
+        return existing
+    raise RuntimeError(f"BMONI create_user conflict, but no matching existing user found: {conflict_body}")
 
 
 async def create_smart_wallet(user_id: str) -> dict:
