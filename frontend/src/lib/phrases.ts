@@ -159,6 +159,28 @@ function speakWithBrowserVoice(text: string): Promise<void> {
   });
 }
 
+const speechCache = new Map<string, Promise<Blob>>();
+
+function cacheKey(text: string, lang: string): string {
+  return `${lang}::${text}`;
+}
+
+/** Kicks off the /api/tts fetch ahead of time and caches the result, so
+ * a later speak() for the same (text, lang) plays instantly instead of
+ * waiting on the network round-trip — used to fetch a step's prompt
+ * audio while the user is still on the *previous* step, so it's already
+ * in hand the moment that step actually renders. */
+export function prefetchSpeech(text: string, lang: string = "en"): void {
+  const key = cacheKey(text, lang);
+  if (speechCache.has(key)) return;
+  const promise = synthesizeSpeech(text, lang);
+  speechCache.set(key, promise);
+  // Silent side-branch so a prefetch nobody ever awaits doesn't surface
+  // as an unhandled rejection — speak() still sees the real failure via
+  // its own await on this same cached promise if it's later consumed.
+  promise.catch(() => { speechCache.delete(key); });
+}
+
 /**
  * Nigerian-accented read-back via YarnGPT (see backend/app/services/
  * yarngpt_service.py), falling back to the browser's generic
@@ -166,11 +188,16 @@ function speakWithBrowserVoice(text: string): Promise<void> {
  * Resolves only once the audio has actually finished playing — callers
  * rely on `await speak(...)` to know the message was fully heard before
  * moving the UI on to the next step, not just that playback started.
+ * Reuses a prefetchSpeech() result when one is already in flight/cached
+ * for this exact (text, lang) pair, so a prompt that was fetched ahead
+ * of time plays the moment its step renders instead of lagging behind.
  */
 export async function speak(text: string, lang: string = "en") {
   setSpeaking(true);
   try {
-    const blob = await synthesizeSpeech(text, lang);
+    const key = cacheKey(text, lang);
+    const cached = speechCache.get(key);
+    const blob = cached ? await cached : await synthesizeSpeech(text, lang);
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
     let playbackBlocked = false;

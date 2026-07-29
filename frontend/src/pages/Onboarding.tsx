@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { registerAccount, registerVoice, voiceProcess } from "../lib/api";
 import { recordAudio, blobToMfccVector } from "../lib/audio";
 import { generateChallenge } from "../lib/challenge";
-import { phrase, speak, LANGUAGES } from "../lib/phrases";
+import { phrase, speak, prefetchSpeech, LANGUAGES } from "../lib/phrases";
 import DeviceFrame from "../components/DeviceFrame";
 import SpeakingIndicator from "../components/SpeakingIndicator";
 
@@ -36,7 +36,18 @@ export default function Onboarding() {
   const lang = LANGUAGES[langIdx].code;
 
   useEffect(() => {
-    if (step === "name") speak(phrase(lang, "askFullName"), lang);
+    // Fetch the "name" prompt's audio as soon as a language is picked on
+    // the "start" step — by the time the user taps Continue and lands on
+    // "name", it's already in hand instead of starting the network
+    // round-trip only once that screen appears.
+    if (step === "start") prefetchSpeech(phrase(lang, "askFullName"), lang);
+  }, [step, lang]);
+
+  useEffect(() => {
+    if (step === "name") {
+      speak(phrase(lang, "askFullName"), lang);
+      prefetchSpeech(phrase(lang, "askAddress"), lang); // next step, fetched one step ahead
+    }
     if (step === "address") speak(phrase(lang, "askAddress"), lang);
   }, [step]);
 
