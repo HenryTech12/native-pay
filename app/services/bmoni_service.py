@@ -52,6 +52,7 @@ SANDBOX_TEST_BVN = "22222222222"
 SANDBOX_COUNTRY_CODE = "NGA"
 WALLET_CURRENCY = "CNGN"  # doc: "Use CNGN, not NGN, when a wallet endpoint asks for the wallet currency."
 DEFAULT_SUMSUB_LEVEL = "id-and-liveness"
+REQUEST_TIMEOUT = 30.0  # httpx defaults to 5s, too tight for a hackathon-day sandbox under load
 
 
 def _headers() -> dict:
@@ -95,7 +96,7 @@ async def create_user(
     body = {"firstName": first_name, "email": email, "phoneNumber": phone_number}
     if bvn:
         body["bvn"] = bvn
-    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
+    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers(), timeout=REQUEST_TIMEOUT) as client:
         res = await client.post("/v1/users", json=body)
         if res.status_code >= 400:
             raise RuntimeError(f"BMONI create_user failed ({res.status_code}): {res.text}")
@@ -110,7 +111,7 @@ async def create_smart_wallet(user_id: str) -> dict:
         return {"id": f"mock-wallet-{random.randint(100000, 999999)}", "walletAddress": "0xMOCK", "environment": "sandbox-mock"}
 
     owner = _owner_account()
-    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
+    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers(), timeout=REQUEST_TIMEOUT) as client:
         challenge_res = await client.post(
             f"/v1/users/{user_id}/smart-wallets/owner-proof-challenges",
             json={"currency": WALLET_CURRENCY, "userOwnerAddress": owner.address},
@@ -147,7 +148,7 @@ async def submit_kyc(
     if MOCK_MODE:
         await asyncio.sleep(0.2)
         return {"activated": True, "environment": "sandbox-mock"}
-    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
+    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers(), timeout=REQUEST_TIMEOUT) as client:
         patch_res = await client.patch(f"/v1/users/{user_id}/kyc", json={
             "personalInfo": {"firstName": first_name, "phoneNumber": phone_number},
             "address": {"countryCode": SANDBOX_COUNTRY_CODE},
@@ -170,7 +171,7 @@ async def get_onboarding_status(user_id: str) -> dict:
     if MOCK_MODE:
         await asyncio.sleep(0.1)
         return {"anchorStatus": "active", "environment": "sandbox-mock"}
-    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
+    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers(), timeout=REQUEST_TIMEOUT) as client:
         res = await client.get(f"/v1/users/{user_id}/onboarding/status")
         if res.status_code >= 400:
             raise RuntimeError(f"BMONI onboarding status check failed ({res.status_code}): {res.text}")
@@ -183,7 +184,7 @@ async def activate_nigeria_rail(
     if MOCK_MODE:
         await asyncio.sleep(0.2)
         return {"message": "Nigeria onboarding started successfully", "environment": "sandbox-mock"}
-    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
+    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers(), timeout=REQUEST_TIMEOUT) as client:
         res = await client.post(f"/v1/users/{user_id}/onboarding/start-nigeria", json={
             "bvn": bvn, "ngnWalletAddress": ngn_wallet_address, "ngnWalletIndex": ngn_wallet_index,
         })
@@ -196,7 +197,7 @@ async def list_nigerian_banks(user_id: str) -> dict:
     if MOCK_MODE:
         await asyncio.sleep(0.1)
         return {"banks": [{"bankName": "GTBank", "bankCode": "058"}], "environment": "sandbox-mock"}
-    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
+    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers(), timeout=REQUEST_TIMEOUT) as client:
         res = await client.get(f"/v1/users/{user_id}/bank-accounts/nigerian-banks")
         if res.status_code >= 400:
             raise RuntimeError(f"BMONI list_nigerian_banks failed ({res.status_code}): {res.text}")
@@ -207,7 +208,7 @@ async def verify_nigerian_account(user_id: str, bank_code: str, account_number: 
     if MOCK_MODE:
         await asyncio.sleep(0.2)
         return {"accountNumber": account_number, "accountName": "MOCK ACCOUNT HOLDER", "bankName": "Mock Bank", "bankCode": bank_code, "environment": "sandbox-mock"}
-    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
+    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers(), timeout=REQUEST_TIMEOUT) as client:
         res = await client.post(f"/v1/users/{user_id}/bank-accounts/verify-nigerian-account", json={
             "bankCode": bank_code, "accountNumber": account_number,
         })
@@ -225,7 +226,7 @@ async def create_withdrawal_account(
     if MOCK_MODE:
         await asyncio.sleep(0.2)
         return {"id": f"mock-bank-account-{random.randint(100000, 999999)}", "accountNumber": account_number, "bankName": bank_name, "environment": "sandbox-mock"}
-    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
+    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers(), timeout=REQUEST_TIMEOUT) as client:
         res = await client.post(f"/v1/users/{user_id}/bank-accounts/withdrawal-accounts/nigeria", json={
             "accountNumber": account_number, "bankCode": bank_code,
             "bankName": bank_name, "accountHolderName": account_holder_name,
@@ -245,7 +246,7 @@ async def initiate_nigeria_withdrawal(
     if MOCK_MODE:
         await asyncio.sleep(0.3)
         return {"proposalId": f"mock-proposal-{random.randint(100000, 999999)}", "signPayload": {"mock": True}, "environment": "sandbox-mock"}
-    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
+    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers(), timeout=REQUEST_TIMEOUT) as client:
         res = await client.post(f"/v1/users/{user_id}/withdrawal/wallet/nigeria", json={
             "sourceSmartWalletId": source_smart_wallet_id,
             "bankAccountId": bank_account_id,
@@ -260,6 +261,8 @@ def sign_withdrawal_payload(sign_payload: dict) -> str:
     """The withdrawal proposal's signPayload is a standard EIP-712
     typed-data object (domain/types/primaryType/message) — sign it
     directly with the owner key, independent of BMONI's SDK."""
+    if MOCK_MODE:
+        return "0xMOCKSIGNATURE"
     owner = _owner_account()
     typed_data = sign_payload.get("typedData") or sign_payload
     signable = encode_typed_data(full_message=typed_data)
@@ -271,7 +274,7 @@ async def submit_proposal_signature(user_id: str, proposal_id: str, signature: s
     if MOCK_MODE:
         await asyncio.sleep(0.3)
         return {"data": {"proposal": {"id": proposal_id, "status": "EXECUTED"}}, "environment": "sandbox-mock"}
-    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
+    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers(), timeout=REQUEST_TIMEOUT) as client:
         res = await client.post(f"/v1/users/{user_id}/smart-wallets/proposals/{proposal_id}/sign", json={
             "signature": signature,
         })
@@ -284,7 +287,7 @@ async def get_wallets(user_id: str) -> dict:
     if MOCK_MODE:
         await asyncio.sleep(0.1)
         return {"wallets": [], "environment": "sandbox-mock"}
-    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
+    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers(), timeout=REQUEST_TIMEOUT) as client:
         res = await client.get(f"/v1/users/{user_id}/smart-wallets/account/wallets")
         if res.status_code >= 400:
             raise RuntimeError(f"BMONI get_wallets failed ({res.status_code}): {res.text}")
@@ -295,7 +298,7 @@ async def get_real_balances(user_id: str) -> dict:
     if MOCK_MODE:
         await asyncio.sleep(0.1)
         return {"data": {"balances": []}, "environment": "sandbox-mock"}
-    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
+    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers(), timeout=REQUEST_TIMEOUT) as client:
         res = await client.get(f"/v1/users/{user_id}/smart-wallets/account/balances")
         if res.status_code >= 400:
             raise RuntimeError(f"BMONI get_balances failed ({res.status_code}): {res.text}")
@@ -306,11 +309,48 @@ async def get_real_transactions(user_id: str, smart_wallet_id: str) -> dict:
     if MOCK_MODE:
         await asyncio.sleep(0.1)
         return {"transactions": [], "environment": "sandbox-mock"}
-    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
+    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers(), timeout=REQUEST_TIMEOUT) as client:
         res = await client.get(f"/v1/users/{user_id}/smart-wallets/{smart_wallet_id}/transactions")
         if res.status_code >= 400:
             raise RuntimeError(f"BMONI get_transactions failed ({res.status_code}): {res.text}")
         return res.json()
+
+
+async def onboard_full(first_name: str, email: str, phone_number: str, bvn: str = SANDBOX_TEST_BVN) -> dict:
+    """One-time orchestration run at NativePay account registration:
+    create user -> create wallet -> KYC -> activate NGN rail. Each step
+    can raise — the caller decides whether a partial failure still lets
+    the local NativePay account exist (it should; BMONI onboarding is
+    best-effort, never a hard gate on using the rest of the app).
+    Returns the identifiers to persist on the local Account so this
+    never needs to run again for this user."""
+    user = await create_user(first_name, email, phone_number, bvn)
+    bmoni_user_id = user["bmoniUserId"]
+
+    wallet = await create_smart_wallet(bmoni_user_id)
+    wallet_id = wallet["id"]
+    wallet_address = wallet.get("walletAddress")
+
+    await submit_kyc(bmoni_user_id, first_name, phone_number, bvn)
+    await activate_nigeria_rail(bmoni_user_id, wallet_address or "", 0, bvn)
+
+    return {
+        "bmoniUserId": bmoni_user_id,
+        "bmoniSmartWalletId": wallet_id,
+        "bmoniWalletAddress": wallet_address,
+    }
+
+
+async def link_nigerian_bank_account(user_id: str, account_number: str, bank_code: str) -> dict:
+    """One-time: verifies the customer's real Nigerian bank account (name-
+    enquiry) then registers it as their withdrawal payout account. Persist
+    the returned id on the local Account — every future real withdrawal
+    reuses it without asking the customer to re-link anything."""
+    verified = await verify_nigerian_account(user_id, bank_code, account_number)
+    withdrawal_account = await create_withdrawal_account(
+        user_id, account_number, bank_code, verified["bankName"], verified["accountName"],
+    )
+    return withdrawal_account
 
 
 async def create_transfer(amount: Optional[int], recipient: Optional[str]) -> dict:

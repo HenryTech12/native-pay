@@ -8,7 +8,7 @@ import random
 from datetime import datetime, timezone
 from typing import Optional
 
-from app.models import Account, Recipient, TransactionRecord
+from app.models import Account, AgentBmoniProfile, Recipient, TransactionRecord
 
 accounts: dict[str, Account] = {
     "mama-aisha": Account(
@@ -26,6 +26,10 @@ recipients: dict[str, Recipient] = {
 }
 
 transactions: dict[str, TransactionRecord] = {}
+
+# The POS agent's own BMONI identity — one profile shared platform-wide,
+# never per-customer. See AgentBmoniProfile's docstring.
+agent_bmoni_profile = AgentBmoniProfile()
 
 
 def create_transaction_record(
@@ -94,6 +98,16 @@ def adjust_balance(user_id: str, delta: int) -> Optional[Account]:
     updated = account.model_copy(update={"balance": account.balance + delta})
     accounts[user_id] = updated
     return updated
+
+
+def get_agent_bmoni_profile() -> AgentBmoniProfile:
+    return agent_bmoni_profile
+
+
+def update_agent_bmoni_profile(**patch) -> AgentBmoniProfile:
+    global agent_bmoni_profile
+    agent_bmoni_profile = agent_bmoni_profile.model_copy(update=patch)
+    return agent_bmoni_profile
 
 
 def get_account_by_card(card_number: str) -> Optional[Account]:
