@@ -51,19 +51,25 @@ python -m pytest tests/ -v
 | `/api/transactions/{id}` | GET | Fetch one transaction |
 | `/api/transactions/{id}/receipt` | GET | Receipt for a `TRANSACTION_SUCCESS` transaction |
 
-### BMONI onboarding (real sandbox, per BMONI's hackathon quick-start doc)
-Self-custodied wallet flow: create user → create wallet → KYC → activate NGN rail → read wallet/balance/transactions. Runs in mock mode until `BMONI_API_KEY`/`BMONI_OWNER_PRIVATE_KEY` are set.
+### BMONI onboarding + withdrawal (real sandbox, per BMONI's OpenAPI reference)
+Self-custodied smart-wallet flow: create user → create wallet (owner-proof challenge + EIP-191 signature) → KYC (profile PATCH + SumSub activation) → activate NGN rail → read wallet/balance/transactions → withdraw to a real Nigerian bank account (offramp proposal + EIP-712 signature). Runs in mock mode until `BMONI_API_KEY`/`BMONI_OWNER_PRIVATE_KEY` are set.
 | Route | Method | Purpose |
 |---|---|---|
-| `/api/bmoni/generate-owner-wallet` | POST | One-time: generates the EVM keypair that signs every user's owner-proof challenge |
-| `/api/bmoni/users` | POST | Create a BMONI sandbox user |
-| `/api/bmoni/users/{id}/wallet` | POST | Owner-proof challenge → sign → create managed smart wallet |
-| `/api/bmoni/users/{id}/kyc` | POST | Submit sandbox KYC (test BVN `22222222222`) |
-| `/api/bmoni/users/{id}/onboarding-status` | GET | Check onboarding status |
+| `/api/bmoni/generate-owner-wallet` | POST | One-time: generates the EVM keypair that signs every user's owner-proof challenge and withdrawal proposals |
+| `/api/bmoni/users` | POST | Create a BMONI sandbox user (optionally with a BVN to auto-fill profile fields) |
+| `/api/bmoni/users/{id}/wallet` | POST | Owner-proof challenge → sign (EIP-191) → create managed smart wallet |
+| `/api/bmoni/users/{id}/kyc` | POST | PATCH the KYC profile (BVN) then activate it for SumSub review |
+| `/api/bmoni/users/{id}/onboarding-status` | GET | Check onboarding status across providers |
 | `/api/bmoni/users/{id}/activate-nigeria` | POST | Activate the NGN rail |
 | `/api/bmoni/users/{id}/wallets` | GET | Real wallet list |
 | `/api/bmoni/users/{id}/real-balances` | GET | Real wallet balances |
-| `/api/bmoni/users/{id}/real-transactions` | GET | Real wallet transaction history |
+| `/api/bmoni/users/{id}/wallets/{smartWalletId}/real-transactions` | GET | Real wallet transaction history |
+| `/api/bmoni/users/{id}/nigerian-banks` | GET | Supported banks + CBN codes for withdrawal |
+| `/api/bmoni/users/{id}/verify-nigerian-account` | POST | Name-enquiry on a Nigerian account number before creating a withdrawal account |
+| `/api/bmoni/users/{id}/withdrawal-account` | POST | Register the payout bank account a withdrawal settles to |
+| `/api/bmoni/users/{id}/withdraw-nigeria` | POST | Full real withdrawal round trip: creates the offramp proposal, signs the EIP-712 payload, submits the signature — the one BMONI-powered financial function that actually moves money in this demo |
+
+There's no BMONI endpoint for arbitrary P2P "send" or an NGN-only deposit (only card/crypto deposit exist), so this app's send/deposit/airtime actions keep using its own balance bookkeeping — matching the quick-start doc's note that sandbox wallets are funded manually by BMONI staff, not via API.
 
 ### Health
 `/api/health` — `{ok, demoMode, bmoniMockMode}`
