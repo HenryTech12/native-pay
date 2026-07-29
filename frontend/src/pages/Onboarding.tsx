@@ -4,6 +4,7 @@ import { registerAccount, registerVoice, voiceProcess } from "../lib/api";
 import { recordAudio, blobToMfccVector } from "../lib/audio";
 import { generateChallenge } from "../lib/challenge";
 import { phrase, speak, LANGUAGES } from "../lib/phrases";
+import DeviceFrame from "../components/DeviceFrame";
 
 type Step = "start" | "name" | "address" | "voiceprint" | "review" | "done";
 
@@ -100,6 +101,11 @@ export default function Onboarding() {
     }
   }
 
+  function onKeypadPress(key: string) {
+    if (step !== "start" || !/\d/.test(key)) return;
+    setUserId((prev) => prev + key);
+  }
+
   const titles: Record<Step, [string, string]> = {
     start: ["Create your account", "Pick your language and a phone number to sign in with."],
     name: ["Your name", "Say your full name — this becomes your account name."],
@@ -111,7 +117,7 @@ export default function Onboarding() {
   const [title, sub] = titles[step];
 
   return (
-    <div style={s.body}>
+    <DeviceFrame onKeypadPress={onKeypadPress}>
       <div style={s.card}>
         <header style={s.header}>
           <div style={s.topRow}>
@@ -194,7 +200,7 @@ export default function Onboarding() {
           )}
         </main>
       </div>
-    </div>
+    </DeviceFrame>
   );
 }
 
@@ -208,7 +214,6 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 const s: Record<string, React.CSSProperties> = {
-  body: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 },
   card: { width: "100%", maxWidth: 460, background: "#fff", borderRadius: 22, overflow: "hidden", boxShadow: "0 20px 60px rgba(19,28,59,0.18)", border: "1px solid var(--line)" },
   header: { background: "var(--indigo)", color: "var(--paper)", padding: "20px 26px 16px" },
   topRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
