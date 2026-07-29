@@ -36,13 +36,14 @@ class TransactionRecord(BaseModel):
     action: Action
     amount: Optional[int] = None
     recipient: Optional[str] = None
+    recipientAccount: Optional[str] = None
     confidence: Optional[float] = None
     state: TransactionState
     createdAt: str
     faceVerified: bool = False
     bmoniReference: Optional[str] = None
     error: Optional[str] = None
-    needsClarification: Optional[Literal["amount", "recipient"]] = None
+    needsClarification: Optional[Literal["amount", "recipient", "accountNumber"]] = None
 
 
 class Account(BaseModel):
