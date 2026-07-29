@@ -68,7 +68,7 @@ async def get_transaction_status(reference: str) -> dict:
 async def get_account_balance(account_id: str) -> dict:
     if MOCK_MODE:
         await asyncio.sleep(0.2)
-        return {"accountId": account_id, "balance": 85000, "currency": "NGN", "environment": "sandbox-mock"}
+        return {"accountId": account_id, "balance": 300000, "currency": "NGN", "environment": "sandbox-mock"}
     async with httpx.AsyncClient() as client:
         res = await client.get(f"{BASE_URL}/accounts/{account_id}/balance", headers={"Authorization": f"Bearer {API_KEY}"})
         if res.status_code >= 400:

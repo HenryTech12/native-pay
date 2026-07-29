@@ -12,7 +12,7 @@ from app.models import Account, Recipient, TransactionRecord
 
 accounts: dict[str, Account] = {
     "mama-aisha": Account(
-        id="mama-aisha", name="Mama Aisha", preferredLanguage="yo", balance=85000,
+        id="mama-aisha", name="Olawale Zainab", preferredLanguage="yo", balance=300000,
         cardNumber="5060 0000 0000 0001",
     )
 }

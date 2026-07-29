@@ -381,8 +381,14 @@ export default function App() {
           {step === "card" && (
             <div style={s.micStage}>
               <div style={{ ...s.cardVisual, ...(inserting ? s.cardVisualInserting : {}) }}>
-                <div style={s.cardChip} />
+                <div style={s.cardTopRow}>
+                  <div style={s.cardBrand}>GTBank</div>
+                  <div style={s.cardChip} />
+                </div>
                 <div style={s.cardNumberDisplay}>{cardNumber || "•••• •••• •••• ••••"}</div>
+                <div style={s.cardBottomRow}>
+                  <div style={s.cardTypeLabel}>VERVE</div>
+                </div>
               </div>
               <input
                 style={s.input}
@@ -395,7 +401,7 @@ export default function App() {
               {cardError && <div style={s.cardErrorText}>{cardError}</div>}
               <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} disabled={inserting || cardNumber.replace(/\D/g, "").length < 16} onClick={onSubmitCard}>{inserting ? "Inserting..." : "Insert card"}</button>
               <div style={s.quickRow}>
-                <span style={s.quickBtn} onClick={() => setCardNumber("5060 0000 0000 0001")}>Use demo card (Mama Aisha)</span>
+                <span style={s.quickBtn} onClick={() => setCardNumber("5060 0000 0000 0001")}>Use demo card (Olawale Zainab)</span>
               </div>
               <div style={s.hint}>No card? <span style={s.linkText} onClick={() => setStep("start")}>Enter phone number manually</span></div>
             </div>
@@ -602,10 +608,14 @@ export default function App() {
 }
 
 const s: Record<string, React.CSSProperties> = {
-  cardVisual: { width: "100%", aspectRatio: "1.586", maxHeight: 150, borderRadius: 16, background: "linear-gradient(135deg, var(--indigo) 0%, var(--indigo-deep) 100%)", padding: 18, display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: "0 10px 24px rgba(19,28,59,0.25)" },
+  cardVisual: { width: "100%", aspectRatio: "1.586", maxHeight: 150, borderRadius: 16, background: "linear-gradient(135deg, #FF7A00 0%, #E85D00 100%)", padding: 18, display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: "0 10px 24px rgba(232,93,0,0.3)" },
   cardVisualInserting: { animation: "cardInsert 550ms ease-in forwards" },
+  cardTopRow: { display: "flex", alignItems: "center", justifyContent: "space-between" },
+  cardBrand: { fontSize: 18, fontWeight: 800, fontStyle: "italic", letterSpacing: "0.02em", color: "#fff" },
   cardChip: { width: 34, height: 26, borderRadius: 5, background: "linear-gradient(135deg, var(--gold-light), var(--gold))" },
   cardNumberDisplay: { fontFamily: "monospace", fontSize: 17, letterSpacing: "0.06em", color: "var(--paper)" },
+  cardBottomRow: { display: "flex", justifyContent: "flex-end" },
+  cardTypeLabel: { fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", color: "rgba(255,255,255,0.85)" },
   cardErrorText: { color: "var(--alert)", fontSize: "12.5px", textAlign: "center" },
   linkText: { color: "var(--indigo)", fontWeight: 700, cursor: "pointer", textDecoration: "underline" },
   appCard: { width: "100%", maxWidth: 460, background: "#fff", borderRadius: 22, overflow: "hidden", boxShadow: "0 20px 60px rgba(19,28,59,0.18)", border: "1px solid var(--line)" },
