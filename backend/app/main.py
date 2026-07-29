@@ -9,7 +9,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from app.services import bmoni_service, groq_service, store, transaction_service, voice_auth, yarngpt_service
+from app.services import bmoni_service, groq_service, paystack_service, store, transaction_service, voice_auth, yarngpt_service
 from app.services.languages import supported_languages
 from app.services.transaction_service import STATES
 
@@ -128,14 +128,24 @@ class VerifyFaceBody(BaseModel):
     matched: bool = False
 
 
+@app.get("/api/banks")
+async def banks():
+    try:
+        return await paystack_service.list_banks()
+    except Exception as err:
+        logger.error("banks failed: %s", err, exc_info=True)
+        raise HTTPException(status_code=502, detail={"error": "BANKS_UNAVAILABLE", "message": str(err)})
+
+
 class ResolveRecipientBody(BaseModel):
     id: str
     accountNumber: str
+    bankCode: str
 
 
 @app.post("/api/transactions/resolve-recipient")
-def transactions_resolve_recipient(body: ResolveRecipientBody):
-    result = transaction_service.resolve_recipient_by_account(body.id, body.accountNumber)
+async def transactions_resolve_recipient(body: ResolveRecipientBody):
+    result = await transaction_service.resolve_recipient_by_account(body.id, body.accountNumber, body.bankCode)
     if not result:
         raise HTTPException(status_code=404, detail={"error": "TRANSACTION_NOT_FOUND"})
     return result

@@ -1,7 +1,25 @@
 import pytest
 
-from app.services import store
+from app.services import paystack_service, store
 from app.services import transaction_service as ts
+
+FAKE_RESOLVED_NAMES = {
+    "0123456789": "ADEWALE OKONKWO",
+    "9876543210": "NGOZI EZE",
+}
+
+
+async def _fake_resolve_account(account_number, bank_code):
+    name = FAKE_RESOLVED_NAMES.get(account_number)
+    if not name:
+        raise RuntimeError("Could not resolve account")
+    return {"account_number": account_number, "account_name": name, "bank_id": 1}
+
+
+@pytest.fixture(autouse=True)
+def mock_paystack(monkeypatch):
+    """Keeps the suite offline/deterministic — no real Paystack calls in pytest."""
+    monkeypatch.setattr(paystack_service, "resolve_account", _fake_resolve_account)
 
 
 def test_rejects_invalid_amount():
@@ -20,38 +38,41 @@ def test_known_recipient_gets_account_number_attached():
     assert tx.recipientAccount == "0123456789"
 
 
-def test_resolve_recipient_by_account_succeeds():
+@pytest.mark.asyncio
+async def test_resolve_recipient_by_account_succeeds():
     tx = ts.evaluate_intent("mama-aisha", "send", 5000, "someone-not-in-book", 0.9)
-    resolved = ts.resolve_recipient_by_account(tx.id, "0123456789")
+    resolved = await ts.resolve_recipient_by_account(tx.id, "0123456789", "058")
     assert resolved.state == ts.STATES["CONFIRMATION_REQUIRED"]
-    assert resolved.recipient == "adewale"
+    assert resolved.recipient == "ADEWALE OKONKWO"
     assert resolved.recipientAccount == "0123456789"
 
 
-def test_resolve_recipient_by_account_not_found():
+@pytest.mark.asyncio
+async def test_resolve_recipient_by_account_not_found():
     tx = ts.evaluate_intent("mama-aisha", "send", 5000, "someone-not-in-book", 0.9)
-    resolved = ts.resolve_recipient_by_account(tx.id, "0000000000")
+    resolved = await ts.resolve_recipient_by_account(tx.id, "0000000000", "058")
     assert resolved.state == ts.STATES["UNKNOWN_RECIPIENT"]
-    assert resolved.error == "ACCOUNT_NOT_FOUND"
+    assert "ACCOUNT_NOT_FOUND" in (resolved.error or "")
 
 
 @pytest.mark.asyncio
 async def test_full_happy_path_via_account_number_resolution():
     tx = ts.evaluate_intent("mama-aisha", "send", 5000, "someone-not-in-book", 0.9)
-    resolved = ts.resolve_recipient_by_account(tx.id, "9876543210")
+    resolved = await ts.resolve_recipient_by_account(tx.id, "9876543210", "058")
     assert resolved.state == ts.STATES["CONFIRMATION_REQUIRED"]
     ts.confirm_transaction(resolved.id)
     ts.record_face_verification(resolved.id, True)
     result = await ts.execute_transaction(resolved.id)
     assert result.state == ts.STATES["TRANSACTION_SUCCESS"]
-    assert result.recipient == "ngozi"
+    assert result.recipient == "NGOZI EZE"
 
 
-def test_resolve_recipient_respects_insufficient_funds():
+@pytest.mark.asyncio
+async def test_resolve_recipient_respects_insufficient_funds():
     store.create_account("account-lookup-poor-user", "Poor Lookup Tester", "en")
     balance = store.get_account("account-lookup-poor-user").balance
     tx = ts.evaluate_intent("account-lookup-poor-user", "send", balance + 1000, "someone-not-in-book", 0.9)
-    resolved = ts.resolve_recipient_by_account(tx.id, "1234567890")
+    resolved = await ts.resolve_recipient_by_account(tx.id, "0123456789", "058")
     assert resolved.state == ts.STATES["INSUFFICIENT_FUNDS"]
 
 

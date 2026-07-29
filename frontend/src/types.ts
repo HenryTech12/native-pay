@@ -83,3 +83,8 @@ export interface VoiceAuthorizeResult {
   threshold?: number;
   reason?: string;
 }
+
+export interface Bank {
+  name: string;
+  code: string;
+}

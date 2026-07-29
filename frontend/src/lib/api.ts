@@ -1,5 +1,5 @@
 import type {
-  Action, AccountProfile, AccountRegisterPayload, ParsedIntent, Receipt,
+  Action, AccountProfile, AccountRegisterPayload, Bank, ParsedIntent, Receipt,
   TransactionRecord, VoiceAuthorizeResult, VoiceStatus
 } from "../types";
 
@@ -62,12 +62,17 @@ export async function cancelTransaction(id: string): Promise<TransactionRecord> 
   return asJson(res);
 }
 
-export async function resolveRecipientByAccount(id: string, accountNumber: string): Promise<TransactionRecord> {
+export async function resolveRecipientByAccount(id: string, accountNumber: string, bankCode: string): Promise<TransactionRecord> {
   const res = await fetch(`${API_BASE}/api/transactions/resolve-recipient`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id, accountNumber })
+    body: JSON.stringify({ id, accountNumber, bankCode })
   });
+  return asJson(res);
+}
+
+export async function getBanks(): Promise<Bank[]> {
+  const res = await fetch(`${API_BASE}/api/banks`);
   return asJson(res);
 }
 
