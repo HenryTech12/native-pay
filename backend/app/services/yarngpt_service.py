@@ -20,9 +20,9 @@ YARNGPT_BASE_URL = os.environ.get("YARNGPT_BASE_URL", "https://yarngpt.ai/api/v1
 YARNGPT_API_KEY = os.environ.get("YARNGPT_API_KEY")
 
 VOICE_BY_LANGUAGE = {
-    "en": "Idera",
-    "pcm": "Idera",
-    "yo": "Zainab",
+    "en": "Zainab",
+    "pcm": "Zainab",
+    "yo": "Idera",
     "ha": "Umar",
     "ig": "Chinenye",
 }
