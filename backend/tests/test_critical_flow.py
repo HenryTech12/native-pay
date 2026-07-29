@@ -12,6 +12,47 @@ def test_rejects_invalid_amount():
 def test_rejects_unknown_recipient():
     tx = ts.evaluate_intent("mama-aisha", "send", 5000, "someone-not-in-book", 0.9)
     assert tx.state == ts.STATES["UNKNOWN_RECIPIENT"]
+    assert tx.needsClarification == "accountNumber"
+
+
+def test_known_recipient_gets_account_number_attached():
+    tx = ts.evaluate_intent("mama-aisha", "send", 5000, "adewale", 0.9)
+    assert tx.recipientAccount == "0123456789"
+
+
+def test_resolve_recipient_by_account_succeeds():
+    tx = ts.evaluate_intent("mama-aisha", "send", 5000, "someone-not-in-book", 0.9)
+    resolved = ts.resolve_recipient_by_account(tx.id, "0123456789")
+    assert resolved.state == ts.STATES["CONFIRMATION_REQUIRED"]
+    assert resolved.recipient == "adewale"
+    assert resolved.recipientAccount == "0123456789"
+
+
+def test_resolve_recipient_by_account_not_found():
+    tx = ts.evaluate_intent("mama-aisha", "send", 5000, "someone-not-in-book", 0.9)
+    resolved = ts.resolve_recipient_by_account(tx.id, "0000000000")
+    assert resolved.state == ts.STATES["UNKNOWN_RECIPIENT"]
+    assert resolved.error == "ACCOUNT_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_full_happy_path_via_account_number_resolution():
+    tx = ts.evaluate_intent("mama-aisha", "send", 5000, "someone-not-in-book", 0.9)
+    resolved = ts.resolve_recipient_by_account(tx.id, "9876543210")
+    assert resolved.state == ts.STATES["CONFIRMATION_REQUIRED"]
+    ts.confirm_transaction(resolved.id)
+    ts.record_face_verification(resolved.id, True)
+    result = await ts.execute_transaction(resolved.id)
+    assert result.state == ts.STATES["TRANSACTION_SUCCESS"]
+    assert result.recipient == "ngozi"
+
+
+def test_resolve_recipient_respects_insufficient_funds():
+    store.create_account("account-lookup-poor-user", "Poor Lookup Tester", "en")
+    balance = store.get_account("account-lookup-poor-user").balance
+    tx = ts.evaluate_intent("account-lookup-poor-user", "send", balance + 1000, "someone-not-in-book", 0.9)
+    resolved = ts.resolve_recipient_by_account(tx.id, "1234567890")
+    assert resolved.state == ts.STATES["INSUFFICIENT_FUNDS"]
 
 
 def test_low_confidence_routes_to_clarification():

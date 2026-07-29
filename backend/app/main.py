@@ -128,6 +128,19 @@ class VerifyFaceBody(BaseModel):
     matched: bool = False
 
 
+class ResolveRecipientBody(BaseModel):
+    id: str
+    accountNumber: str
+
+
+@app.post("/api/transactions/resolve-recipient")
+def transactions_resolve_recipient(body: ResolveRecipientBody):
+    result = transaction_service.resolve_recipient_by_account(body.id, body.accountNumber)
+    if not result:
+        raise HTTPException(status_code=404, detail={"error": "TRANSACTION_NOT_FOUND"})
+    return result
+
+
 @app.post("/api/transactions/verify-face")
 def transactions_verify_face(body: VerifyFaceBody):
     result = transaction_service.record_face_verification(body.id, body.matched)

@@ -49,11 +49,13 @@ def evaluate_intent(
             record = store.create_transaction_record(user_id, action, amount, recipient, confidence)
             return store.update_transaction(record.id, state=STATES["INVALID_AMOUNT"])
 
+    recipient_account: Optional[str] = None
     if action == "send":
         key = (recipient or "").lower().strip()
         if not key or key not in store.recipients:
             record = store.create_transaction_record(user_id, action, amount, recipient, confidence)
-            return store.update_transaction(record.id, state=STATES["UNKNOWN_RECIPIENT"])
+            return store.update_transaction(record.id, state=STATES["UNKNOWN_RECIPIENT"], needsClarification="accountNumber")
+        recipient_account = store.recipients[key].account
 
     if action == "airtime":
         if not (recipient or "").strip():
@@ -68,7 +70,38 @@ def evaluate_intent(
 
     record = store.create_transaction_record(user_id, action, amount, recipient, confidence)
     next_state = STATES["TRANSACTION_PROCESSING"] if action == "balance" else STATES["CONFIRMATION_REQUIRED"]
-    return store.update_transaction(record.id, state=next_state)
+    return store.update_transaction(record.id, state=next_state, recipientAccount=recipient_account)
+
+
+def resolve_recipient_by_account(tx_id: str, account_number: str) -> Optional[TransactionRecord]:
+    """
+    Real bank transfers don't match a spoken name against a contact list —
+    they take an account number, look up the account holder (a "name
+    enquiry"), and only proceed once that identity is confirmed. This is
+    the recovery path for a send whose recipient name wasn't recognized.
+    """
+    tx = store.get_transaction(tx_id)
+    if not tx:
+        return None
+    if tx.state != STATES["UNKNOWN_RECIPIENT"]:
+        return tx.model_copy(update={"error": f"Cannot resolve recipient from state {tx.state}"})
+
+    match = store.find_recipient_by_account(account_number)
+    if not match:
+        return store.update_transaction(tx_id, error="ACCOUNT_NOT_FOUND")
+    key, matched_recipient = match
+
+    account = store.get_account(tx.userId)
+    if account and tx.amount and tx.amount > account.balance:
+        return store.update_transaction(
+            tx_id, state=STATES["INSUFFICIENT_FUNDS"], recipient=key,
+            recipientAccount=matched_recipient.account, needsClarification=None, error=None,
+        )
+
+    return store.update_transaction(
+        tx_id, state=STATES["CONFIRMATION_REQUIRED"], recipient=key,
+        recipientAccount=matched_recipient.account, needsClarification=None, error=None,
+    )
 
 
 def confirm_transaction(tx_id: str) -> Optional[TransactionRecord]:

@@ -101,6 +101,14 @@ def get_account_by_card(card_number: str) -> Optional[Account]:
     return accounts.get(user_id) if user_id else None
 
 
+def find_recipient_by_account(account_number: str) -> Optional[tuple[str, Recipient]]:
+    normalized = account_number.replace(" ", "").replace("-", "")
+    for key, recipient in recipients.items():
+        if recipient.account == normalized:
+            return key, recipient
+    return None
+
+
 def get_transaction(tx_id: str) -> Optional[TransactionRecord]:
     return transactions.get(tx_id)
 
