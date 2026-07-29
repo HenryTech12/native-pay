@@ -137,6 +137,17 @@ async def banks():
         raise HTTPException(status_code=502, detail={"error": "BANKS_UNAVAILABLE", "message": str(err)})
 
 
+@app.get("/api/paystack/resolve-account")
+async def paystack_resolve_account(accountNumber: str, bankCode: str):
+    """Standalone test/utility endpoint — resolves an account directly,
+    with no transaction required. What resolve-recipient calls internally."""
+    try:
+        return await paystack_service.resolve_account(accountNumber, bankCode)
+    except Exception as err:
+        logger.error("paystack_resolve_account failed: %s", err, exc_info=True)
+        raise HTTPException(status_code=502, detail={"error": "ACCOUNT_NOT_FOUND", "message": str(err)})
+
+
 class ResolveRecipientBody(BaseModel):
     id: str
     accountNumber: str
