@@ -3,15 +3,16 @@ import type { ReactNode } from "react";
 interface DeviceFrameProps {
   children: ReactNode;
   showReceiptPrint?: boolean;
+  cardSlotActive?: boolean;
   onKeypadPress?: (key: string) => void;
 }
 
-export default function DeviceFrame({ children, showReceiptPrint, onKeypadPress }: DeviceFrameProps) {
+export default function DeviceFrame({ children, showReceiptPrint, cardSlotActive, onKeypadPress }: DeviceFrameProps) {
   return (
     <div style={s.body}>
       <div style={s.deviceChassis}>
         <div style={s.deviceTopRow}>
-          <div style={s.cardSlot} title="Card slot" />
+          <div style={{ ...s.cardSlot, ...(cardSlotActive ? s.cardSlotActive : {}) }} title="Card slot" />
           <div style={s.brandPlaque}>NativePay <span style={s.modelTag}>NP-100</span></div>
           <div style={s.statusIcons}>●●●</div>
         </div>
@@ -39,6 +40,7 @@ const s: Record<string, React.CSSProperties> = {
   deviceChassis: { width: "100%", maxWidth: 520, background: "linear-gradient(160deg, #2b2f38 0%, #1a1d23 100%)", borderRadius: 34, padding: "20px 22px 26px", boxShadow: "0 30px 70px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)" },
   deviceTopRow: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, padding: "0 4px" },
   cardSlot: { width: 46, height: 6, borderRadius: 3, background: "#0d0f13", boxShadow: "inset 0 1px 3px rgba(0,0,0,0.8)" },
+  cardSlotActive: { animation: "slotGlow 550ms ease-in-out" },
   brandPlaque: { fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "rgba(245,239,226,0.55)", textTransform: "uppercase" },
   modelTag: { color: "rgba(245,239,226,0.3)", fontWeight: 500, marginLeft: 4, textTransform: "none" },
   statusIcons: { fontSize: 8, color: "rgba(245,239,226,0.35)", letterSpacing: 2 },

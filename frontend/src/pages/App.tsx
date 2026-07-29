@@ -43,6 +43,7 @@ export default function App() {
 
   const [cardNumber, setCardNumber] = useState("");
   const [cardError, setCardError] = useState("");
+  const [inserting, setInserting] = useState(false);
   const [challenge, setChallenge] = useState<{ digits: string; spoken: string } | null>(null);
   const [authStatus, setAuthStatus] = useState("");
 
@@ -87,6 +88,8 @@ export default function App() {
 
   async function onSubmitCard() {
     setCardError("");
+    setInserting(true);
+    await new Promise((resolve) => setTimeout(resolve, 550)); // let the card-insert animation play out
     try {
       const account = await getAccountByCard(cardNumber);
       const idx = LANGUAGES.findIndex((l) => l.code === account.preferredLanguage);
@@ -96,6 +99,8 @@ export default function App() {
       await startSession(account.id, lang);
     } catch {
       setCardError("Card not recognized. Check the number, or enter your phone number manually.");
+    } finally {
+      setInserting(false);
     }
   }
 
@@ -286,7 +291,7 @@ export default function App() {
   const [title, sub] = titles[step];
 
   return (
-    <DeviceFrame showReceiptPrint={step === "receipt"} onKeypadPress={onKeypadPress}>
+    <DeviceFrame showReceiptPrint={step === "receipt"} cardSlotActive={inserting} onKeypadPress={onKeypadPress}>
       <div style={s.appCard}>
         <header style={s.header}>
           <div style={s.topRow}>
@@ -300,7 +305,7 @@ export default function App() {
         <main style={s.main}>
           {step === "card" && (
             <div style={s.micStage}>
-              <div style={s.cardVisual}>
+              <div style={{ ...s.cardVisual, ...(inserting ? s.cardVisualInserting : {}) }}>
                 <div style={s.cardChip} />
                 <div style={s.cardNumberDisplay}>{cardNumber || "•••• •••• •••• ••••"}</div>
               </div>
@@ -310,9 +315,10 @@ export default function App() {
                 onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
                 placeholder="Card number"
                 maxLength={19}
+                disabled={inserting}
               />
               {cardError && <div style={s.cardErrorText}>{cardError}</div>}
-              <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} disabled={cardNumber.replace(/\D/g, "").length < 16} onClick={onSubmitCard}>Insert card</button>
+              <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} disabled={inserting || cardNumber.replace(/\D/g, "").length < 16} onClick={onSubmitCard}>{inserting ? "Inserting..." : "Insert card"}</button>
               <div style={s.quickRow}>
                 <span style={s.quickBtn} onClick={() => setCardNumber("5060 0000 0000 0001")}>Use demo card (Mama Aisha)</span>
               </div>
@@ -485,6 +491,7 @@ export default function App() {
 
 const s: Record<string, React.CSSProperties> = {
   cardVisual: { width: "100%", aspectRatio: "1.586", maxHeight: 150, borderRadius: 16, background: "linear-gradient(135deg, var(--indigo) 0%, var(--indigo-deep) 100%)", padding: 18, display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: "0 10px 24px rgba(19,28,59,0.25)" },
+  cardVisualInserting: { animation: "cardInsert 550ms ease-in forwards" },
   cardChip: { width: 34, height: 26, borderRadius: 5, background: "linear-gradient(135deg, var(--gold-light), var(--gold))" },
   cardNumberDisplay: { fontFamily: "monospace", fontSize: 17, letterSpacing: "0.06em", color: "var(--paper)" },
   cardErrorText: { color: "var(--alert)", fontSize: "12.5px", textAlign: "center" },
