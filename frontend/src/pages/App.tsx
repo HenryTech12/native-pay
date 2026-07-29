@@ -450,6 +450,7 @@ export default function App() {
             <div style={s.micStage}>
               <div style={s.transcript}>{challenge.spoken}</div>
               <div style={s.hint}>Listen, then tap and repeat these numbers back.</div>
+              <span style={s.linkText} onClick={() => speak(phrase(LANGUAGES[langIdx].code, "askRepeatDigits", challenge.spoken), LANGUAGES[langIdx].code)}>🔊 Repeat prompt</span>
               <button style={{ ...s.micBtn, ...(isRecording ? s.micBtnRecording : {}) }} onClick={toggleAuthRecording}>🎤</button>
               <div style={s.hint}>{authStatus}</div>
             </div>
