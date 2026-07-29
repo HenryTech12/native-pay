@@ -15,6 +15,11 @@ _voiceprints: dict[str, list[float]] = {}
 
 THRESHOLD = float(os.environ.get("VOICE_MATCH_THRESHOLD", "0.85"))
 
+# Stricter than the login threshold — this one can skip the mandatory
+# face check for a transaction, so it demands a much higher-confidence
+# match than "good enough to skip straight to the app" at login.
+TRANSACTION_THRESHOLD = float(os.environ.get("TRANSACTION_VOICE_MATCH_THRESHOLD", "0.92"))
+
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
     if len(a) != len(b):
@@ -38,6 +43,18 @@ def authorize_by_voice(user_id: str, feature_vector: list[float]) -> dict:
         return {"authorized": False, "reason": "no_registered_voiceprint"}
     similarity = _cosine_similarity(stored, feature_vector)
     return {"authorized": similarity >= THRESHOLD, "similarity": round(similarity, 3), "threshold": THRESHOLD}
+
+
+def authorize_for_transaction(user_id: str, feature_vector: list[float]) -> dict:
+    """Stricter check used to decide whether a transaction's mandatory
+    face check can be skipped — same mechanism as authorize_by_voice,
+    higher bar, because this one authorizes money movement rather than
+    just a login shortcut."""
+    stored = _voiceprints.get(user_id)
+    if stored is None:
+        return {"authorized": False, "reason": "no_registered_voiceprint"}
+    similarity = _cosine_similarity(stored, feature_vector)
+    return {"authorized": similarity >= TRANSACTION_THRESHOLD, "similarity": round(similarity, 3), "threshold": TRANSACTION_THRESHOLD}
 
 
 def has_voiceprint(user_id: str) -> bool:
