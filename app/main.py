@@ -4,11 +4,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from app.services import bmoni_service, groq_service, store, transaction_service, voice_auth
+from app.services import bmoni_service, groq_service, store, transaction_service, voice_auth, yarngpt_service
 from app.services.languages import supported_languages
 from app.services.transaction_service import STATES
 
@@ -30,6 +30,20 @@ def health():
 @app.get("/api/languages")
 def languages():
     return supported_languages()
+
+
+class TtsBody(BaseModel):
+    text: str
+    language: str = "en"
+
+
+@app.post("/api/tts")
+async def tts(body: TtsBody):
+    try:
+        audio = await yarngpt_service.synthesize_speech(body.text, body.language)
+        return Response(content=audio, media_type="audio/mpeg")
+    except Exception as err:
+        raise HTTPException(status_code=502, detail={"error": "TTS_UNAVAILABLE", "message": str(err)})
 
 
 @app.post("/api/voice/process")
@@ -162,6 +176,37 @@ def accounts_balance(account_id: str):
         return {"accountId": account_id, "balance": balance, "currency": "NGN"}
     except Exception as err:
         raise HTTPException(status_code=500, detail={"error": "BMONI_API_ERROR", "message": str(err)})
+
+
+class AccountRegisterBody(BaseModel):
+    userId: str
+    fullName: str
+    address: str
+    language: str
+
+
+@app.post("/api/accounts/register")
+def accounts_register(body: AccountRegisterBody):
+    if store.get_account(body.userId):
+        raise HTTPException(status_code=409, detail={"error": "ACCOUNT_EXISTS"})
+    account = store.create_account(body.userId, body.fullName, body.language, body.address)
+    return account
+
+
+@app.get("/api/accounts/by-card/{card_number}")
+def accounts_get_by_card(card_number: str):
+    account = store.get_account_by_card(card_number)
+    if not account:
+        raise HTTPException(status_code=404, detail={"error": "CARD_NOT_RECOGNIZED"})
+    return account
+
+
+@app.get("/api/accounts/{account_id}")
+def accounts_get(account_id: str):
+    account = store.get_account(account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail={"error": "ACCOUNT_NOT_FOUND"})
+    return account
 
 
 class VoiceprintBody(BaseModel):
