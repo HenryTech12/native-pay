@@ -236,10 +236,23 @@ class BmoniCreateUserBody(BaseModel):
 
 @app.post("/api/bmoni/users")
 async def bmoni_create_user(body: BmoniCreateUserBody):
+    """Self-healing on a 409 conflict: recovers the existing bmoniUserId
+    via list_users instead of failing, since a conflict here usually
+    means a prior attempt's response was lost (e.g. a gateway timeout)
+    even though BMONI's side actually created the user."""
     try:
         return await bmoni_service.create_user(body.firstName, body.email, body.phoneNumber, body.bvn)
     except Exception as err:
         logger.error("bmoni_create_user failed: %s", err, exc_info=True)
+        raise HTTPException(status_code=502, detail={"error": "BMONI_API_ERROR", "message": str(err)})
+
+
+@app.get("/api/bmoni/users")
+async def bmoni_list_users(page: int = 1, limit: int = 100):
+    try:
+        return await bmoni_service.list_users(page, limit)
+    except Exception as err:
+        logger.error("bmoni_list_users failed: %s", err, exc_info=True)
         raise HTTPException(status_code=502, detail={"error": "BMONI_API_ERROR", "message": str(err)})
 
 
