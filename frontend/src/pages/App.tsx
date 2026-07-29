@@ -134,7 +134,7 @@ export default function App() {
     const c = generateChallenge(forLang);
     setChallenge(c);
     setStep("auth");
-    speak(phrase(forLang, "askRepeatDigits", c.spoken), forLang);
+    await speak(phrase(forLang, "askRepeatDigits", c.spoken), forLang);
   }
 
   async function onSubmitCard() {
@@ -172,7 +172,7 @@ export default function App() {
 
     if (resolved.state === "CONFIRMATION_REQUIRED") {
       const lang = LANGUAGES[langIdx].code;
-      speak(confirmPhraseFor(lang, resolved.action, resolved.amount, resolved.recipient), lang);
+      await speak(confirmPhraseFor(lang, resolved.action, resolved.amount, resolved.recipient), lang);
       setStep("confirm");
       return;
     }
@@ -203,13 +203,13 @@ export default function App() {
         if (result.authorized) {
           try {
             const account = await getAccount(userId);
-            speak(phrase(lang, "welcomeBack", account.name), lang);
+            await speak(phrase(lang, "welcomeBack", account.name), lang);
           } catch {
             /* welcome message is a nicety — proceed either way */
           }
           setStep("listen");
         } else {
-          speak(phrase(lang, "voiceAuthStepUp"), lang);
+          await speak(phrase(lang, "voiceAuthStepUp"), lang);
           setStep("faceAuth");
         }
       } catch {
@@ -226,7 +226,7 @@ export default function App() {
       setStep("listen");
       return;
     }
-    speak(phrase(LANGUAGES[langIdx].code, "voiceAuthFailed"), LANGUAGES[langIdx].code);
+    await speak(phrase(LANGUAGES[langIdx].code, "voiceAuthFailed"), LANGUAGES[langIdx].code);
     setStep("authFailed");
   }
 
@@ -266,7 +266,7 @@ export default function App() {
   async function handleIntent(intent: { action: Action; amount: number | null; recipient: string | null; confidence: number }) {
     if (intent.action === "balance") {
       const b = await getBalance(userId);
-      speak(phrase(LANGUAGES[langIdx].code, "balance", b.balance), LANGUAGES[langIdx].code);
+      await speak(phrase(LANGUAGES[langIdx].code, "balance", b.balance), LANGUAGES[langIdx].code);
       setBalance(b.balance);
       setStep("balance");
       return;
@@ -286,7 +286,7 @@ export default function App() {
     }
     if (created.state === "CONFIRMATION_REQUIRED") {
       const lang = LANGUAGES[langIdx].code;
-      speak(confirmPhraseFor(lang, created.action, created.amount, created.recipient), lang);
+      await speak(confirmPhraseFor(lang, created.action, created.amount, created.recipient), lang);
       setStep("confirm");
       return;
     }
@@ -333,7 +333,7 @@ export default function App() {
     const r = await getReceipt(sent.id);
     setReceipt(r);
     const lang = LANGUAGES[langIdx].code;
-    speak(successPhraseFor(lang, sent.action, sent.amount, sent.recipient), lang);
+    await speak(successPhraseFor(lang, sent.action, sent.amount, sent.recipient), lang);
     setStep("receipt");
   }
 

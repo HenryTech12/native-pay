@@ -92,7 +92,7 @@ export default function Onboarding() {
       const account = await registerAccount({ userId, fullName, address, language: lang });
       setCardNumber(account.cardNumber || "");
       await registerVoice(userId, averageVectors(voiceSamples));
-      speak(phrase(lang, "enrollmentComplete"), lang);
+      await speak(phrase(lang, "enrollmentComplete"), lang);
       setStatus("");
       setStep("done");
     } catch (err) {
