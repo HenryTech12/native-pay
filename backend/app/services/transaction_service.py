@@ -7,8 +7,8 @@ produces identical transaction behavior against the same frontend.
 
 from typing import Optional
 
-from app.models import TransactionRecord
-from app.services import paystack_service, store
+from app.models import AgentBmoniProfile, TransactionRecord
+from app.services import bmoni_service, paystack_service, store
 from app.services.bmoni_service import create_transfer
 
 STATES = {
@@ -148,8 +148,17 @@ async def execute_transaction(tx_id: str) -> Optional[TransactionRecord]:
     store.update_transaction(tx_id, state=STATES["TRANSACTION_PROCESSING"])
 
     try:
-        if tx.action in ("send", "withdraw", "airtime"):
-            result = await create_transfer(tx.amount, tx.recipient or "self (withdrawal)")
+        if tx.action == "withdraw":
+            agent = store.get_agent_bmoni_profile()
+            if agent.bmoniOnboarded and agent.bmoniSmartWalletId and agent.bmoniWithdrawalAccountId:
+                reference = await _execute_real_nigeria_withdrawal(agent, tx.amount or 0)
+            else:
+                result = await create_transfer(tx.amount, "self (withdrawal)")
+                reference = result["reference"]
+            store.adjust_balance(tx.userId, -(tx.amount or 0))
+            return store.update_transaction(tx_id, state=STATES["TRANSACTION_SUCCESS"], bmoniReference=reference)
+        if tx.action in ("send", "airtime"):
+            result = await create_transfer(tx.amount, tx.recipient or "self")
             store.adjust_balance(tx.userId, -(tx.amount or 0))
             return store.update_transaction(tx_id, state=STATES["TRANSACTION_SUCCESS"], bmoniReference=result["reference"])
         if tx.action == "deposit":
@@ -159,6 +168,23 @@ async def execute_transaction(tx_id: str) -> Optional[TransactionRecord]:
         return store.update_transaction(tx_id, state=STATES["TRANSACTION_SUCCESS"])
     except Exception as err:
         return store.update_transaction(tx_id, state=STATES["BMONI_API_ERROR"], error=str(err))
+
+
+async def _execute_real_nigeria_withdrawal(agent: AgentBmoniProfile, amount: int) -> str:
+    """Real money movement: initiates the BMONI offramp proposal against
+    the POS agent's own onboarded wallet (never the customer's — see
+    AgentBmoniProfile), signs the EIP-712 payload with our owner key,
+    submits it, and returns the proposal ID as the receipt reference.
+    The customer's local ledger balance is adjusted separately by the
+    caller — this only represents the agent's own real cash-out."""
+    initiated = await bmoni_service.initiate_nigeria_withdrawal(
+        agent.bmoniUserId, agent.bmoniSmartWalletId, agent.bmoniWithdrawalAccountId, f"{amount:.2f}"
+    )
+    if initiated.get("signPayloadPending"):
+        raise RuntimeError("BMONI withdrawal sign payload not ready yet — retry shortly")
+    signature = bmoni_service.sign_withdrawal_payload(initiated["signPayload"])
+    await bmoni_service.submit_proposal_signature(agent.bmoniUserId, initiated["proposalId"], signature)
+    return initiated["proposalId"]
 
 
 def get_account_balance(user_id: str) -> Optional[int]:
