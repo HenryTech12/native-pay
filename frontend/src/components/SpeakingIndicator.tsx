@@ -1,12 +1,10 @@
-import { useEffect, useState } from "react";
-import { subscribeSpeaking } from "../lib/phrases";
+import { useIsSpeaking } from "../lib/useIsSpeaking";
 
 /** Shows a small pulsing indicator whenever speak() is actively playing
  * audio — so users know to wait for the voice prompt rather than acting
  * (or wondering why the screen hasn't moved on yet) while it's in flight. */
 export default function SpeakingIndicator() {
-  const [speaking, setSpeaking] = useState(false);
-  useEffect(() => subscribeSpeaking(setSpeaking), []);
+  const speaking = useIsSpeaking();
   if (!speaking) return null;
   return (
     <div style={s.wrap}>

@@ -11,6 +11,7 @@ import { generateChallenge } from "../lib/challenge";
 import { phrase, speak, LANGUAGES } from "../lib/phrases";
 import DeviceFrame from "../components/DeviceFrame";
 import SpeakingIndicator from "../components/SpeakingIndicator";
+import { useIsSpeaking } from "../lib/useIsSpeaking";
 import type { TransactionRecord, Receipt, Action, Bank } from "../types";
 
 type Step =
@@ -72,6 +73,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 };
 
 export default function App() {
+  const isSpeaking = useIsSpeaking();
   const [step, setStep] = useState<Step>("card");
   const [userId, setUserId] = useState("mama-aisha");
   const [langIdx, setLangIdx] = useState(0);
@@ -159,7 +161,7 @@ export default function App() {
   }
 
   function onKeypadPress(key: string) {
-    if (!/\d/.test(key)) return;
+    if (isSpeaking || !/\d/.test(key)) return;
     if (step === "card") {
       setCardNumber((prev) => formatCardNumber(prev.replace(/\D/g, "") + key));
     } else if (step === "clarify" && tx?.needsClarification === "accountNumber") {
@@ -398,6 +400,7 @@ export default function App() {
 
         <main style={s.main}>
           <SpeakingIndicator />
+          {isSpeaking && <div style={s.speakingBlock} aria-hidden="true" />}
           {step === "card" && (
             <div style={s.micStage}>
               <div style={{ ...s.cardVisual, ...(inserting ? s.cardVisualInserting : {}) }}>
@@ -646,7 +649,8 @@ const s: Record<string, React.CSSProperties> = {
   demoBadge: { fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", background: "var(--gold)", color: "#fff", padding: "4px 9px", borderRadius: 100 },
   h1: { fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 21, margin: "0 0 4px" },
   sub: { margin: 0, fontSize: 12, color: "rgba(245,239,226,0.75)" },
-  main: { padding: "24px 26px", minHeight: 360, display: "flex", flexDirection: "column" },
+  main: { padding: "24px 26px", minHeight: 360, display: "flex", flexDirection: "column", position: "relative" },
+  speakingBlock: { position: "absolute", inset: 0, zIndex: 5, cursor: "not-allowed", background: "transparent" },
   label: { fontSize: 13, fontWeight: 600, color: "#5c5346", marginBottom: 6, display: "block" },
   input: { width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--line)", fontSize: 15, marginBottom: 14 },
   micStage: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, gap: 14, padding: "4px 0" },

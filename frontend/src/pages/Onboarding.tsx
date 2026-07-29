@@ -6,6 +6,7 @@ import { generateChallenge } from "../lib/challenge";
 import { phrase, speak, prefetchSpeech, LANGUAGES } from "../lib/phrases";
 import DeviceFrame from "../components/DeviceFrame";
 import SpeakingIndicator from "../components/SpeakingIndicator";
+import { useIsSpeaking } from "../lib/useIsSpeaking";
 
 type Step = "start" | "name" | "address" | "voiceprint" | "review" | "done";
 
@@ -18,6 +19,7 @@ function averageVectors(vectors: number[][]): number[] {
 
 export default function Onboarding() {
   const navigate = useNavigate();
+  const isSpeaking = useIsSpeaking();
   const [step, setStep] = useState<Step>("start");
   const [langIdx, setLangIdx] = useState(0);
   const [userId, setUserId] = useState("");
@@ -114,7 +116,7 @@ export default function Onboarding() {
   }
 
   function onKeypadPress(key: string) {
-    if (step !== "start" || !/\d/.test(key)) return;
+    if (isSpeaking || step !== "start" || !/\d/.test(key)) return;
     setUserId((prev) => prev + key);
   }
 
@@ -141,6 +143,7 @@ export default function Onboarding() {
 
         <main style={s.main}>
           <SpeakingIndicator />
+          {isSpeaking && <div style={s.speakingBlock} aria-hidden="true" />}
           {step === "start" && (
             <>
               <label style={s.label}>Phone number</label>
@@ -236,7 +239,8 @@ const s: Record<string, React.CSSProperties> = {
   backLink: { color: "var(--gold-light)", fontSize: 12, textDecoration: "none" },
   h1: { fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 21, margin: "0 0 4px" },
   sub: { margin: 0, fontSize: 12, color: "rgba(245,239,226,0.75)" },
-  main: { padding: "24px 26px", minHeight: 340, display: "flex", flexDirection: "column" },
+  main: { padding: "24px 26px", minHeight: 340, display: "flex", flexDirection: "column", position: "relative" },
+  speakingBlock: { position: "absolute", inset: 0, zIndex: 5, cursor: "not-allowed", background: "transparent" },
   label: { fontSize: 13, fontWeight: 600, color: "#5c5346", marginBottom: 6, display: "block" },
   input: { width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--line)", fontSize: 15, marginBottom: 14 },
   langRow: { display: "flex", gap: 7, marginBottom: 20, flexWrap: "wrap" },
