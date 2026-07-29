@@ -211,6 +211,103 @@ def transactions_receipt(tx_id: str):
     return bmoni_service.generate_receipt(tx)
 
 
+@app.post("/api/bmoni/generate-owner-wallet")
+def bmoni_generate_owner_wallet():
+    """One-time setup helper — generates an EVM keypair for the
+    self-custodied smart-wallet owner. Save privateKey as
+    BMONI_OWNER_PRIVATE_KEY in .env, then never call this again."""
+    return bmoni_service.generate_owner_wallet()
+
+
+class BmoniCreateUserBody(BaseModel):
+    firstName: str
+    email: str
+    phoneNumber: str
+
+
+@app.post("/api/bmoni/users")
+async def bmoni_create_user(body: BmoniCreateUserBody):
+    try:
+        return await bmoni_service.create_user(body.firstName, body.email, body.phoneNumber)
+    except Exception as err:
+        logger.error("bmoni_create_user failed: %s", err, exc_info=True)
+        raise HTTPException(status_code=502, detail={"error": "BMONI_API_ERROR", "message": str(err)})
+
+
+@app.post("/api/bmoni/users/{user_id}/wallet")
+async def bmoni_create_wallet(user_id: str):
+    try:
+        return await bmoni_service.create_smart_wallet(user_id)
+    except Exception as err:
+        logger.error("bmoni_create_wallet failed: %s", err, exc_info=True)
+        raise HTTPException(status_code=502, detail={"error": "BMONI_API_ERROR", "message": str(err)})
+
+
+class BmoniKycBody(BaseModel):
+    bvn: str = bmoni_service.SANDBOX_TEST_BVN
+    countryCode: str = bmoni_service.SANDBOX_COUNTRY_CODE
+
+
+@app.post("/api/bmoni/users/{user_id}/kyc")
+async def bmoni_submit_kyc(user_id: str, body: BmoniKycBody):
+    try:
+        return await bmoni_service.submit_kyc(user_id, body.bvn, body.countryCode)
+    except Exception as err:
+        logger.error("bmoni_submit_kyc failed: %s", err, exc_info=True)
+        raise HTTPException(status_code=502, detail={"error": "BMONI_API_ERROR", "message": str(err)})
+
+
+@app.get("/api/bmoni/users/{user_id}/onboarding-status")
+async def bmoni_onboarding_status(user_id: str):
+    try:
+        return await bmoni_service.get_onboarding_status(user_id)
+    except Exception as err:
+        logger.error("bmoni_onboarding_status failed: %s", err, exc_info=True)
+        raise HTTPException(status_code=502, detail={"error": "BMONI_API_ERROR", "message": str(err)})
+
+
+class BmoniActivateBody(BaseModel):
+    walletAddress: str
+    walletIndex: int = 0
+    bvn: str = bmoni_service.SANDBOX_TEST_BVN
+
+
+@app.post("/api/bmoni/users/{user_id}/activate-nigeria")
+async def bmoni_activate_nigeria(user_id: str, body: BmoniActivateBody):
+    try:
+        return await bmoni_service.activate_nigeria_rail(user_id, body.walletAddress, body.walletIndex, body.bvn)
+    except Exception as err:
+        logger.error("bmoni_activate_nigeria failed: %s", err, exc_info=True)
+        raise HTTPException(status_code=502, detail={"error": "BMONI_API_ERROR", "message": str(err)})
+
+
+@app.get("/api/bmoni/users/{user_id}/wallets")
+async def bmoni_get_wallets(user_id: str):
+    try:
+        return await bmoni_service.get_wallets(user_id)
+    except Exception as err:
+        logger.error("bmoni_get_wallets failed: %s", err, exc_info=True)
+        raise HTTPException(status_code=502, detail={"error": "BMONI_API_ERROR", "message": str(err)})
+
+
+@app.get("/api/bmoni/users/{user_id}/real-balances")
+async def bmoni_get_real_balances(user_id: str):
+    try:
+        return await bmoni_service.get_real_balances(user_id)
+    except Exception as err:
+        logger.error("bmoni_get_real_balances failed: %s", err, exc_info=True)
+        raise HTTPException(status_code=502, detail={"error": "BMONI_API_ERROR", "message": str(err)})
+
+
+@app.get("/api/bmoni/users/{user_id}/real-transactions")
+async def bmoni_get_real_transactions(user_id: str):
+    try:
+        return await bmoni_service.get_real_transactions(user_id)
+    except Exception as err:
+        logger.error("bmoni_get_real_transactions failed: %s", err, exc_info=True)
+        raise HTTPException(status_code=502, detail={"error": "BMONI_API_ERROR", "message": str(err)})
+
+
 @app.get("/api/accounts/{account_id}/balance")
 def accounts_balance(account_id: str):
     try:

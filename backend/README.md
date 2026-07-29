@@ -51,6 +51,20 @@ python -m pytest tests/ -v
 | `/api/transactions/{id}` | GET | Fetch one transaction |
 | `/api/transactions/{id}/receipt` | GET | Receipt for a `TRANSACTION_SUCCESS` transaction |
 
+### BMONI onboarding (real sandbox, per BMONI's hackathon quick-start doc)
+Self-custodied wallet flow: create user → create wallet → KYC → activate NGN rail → read wallet/balance/transactions. Runs in mock mode until `BMONI_API_KEY`/`BMONI_OWNER_PRIVATE_KEY` are set.
+| Route | Method | Purpose |
+|---|---|---|
+| `/api/bmoni/generate-owner-wallet` | POST | One-time: generates the EVM keypair that signs every user's owner-proof challenge |
+| `/api/bmoni/users` | POST | Create a BMONI sandbox user |
+| `/api/bmoni/users/{id}/wallet` | POST | Owner-proof challenge → sign → create managed smart wallet |
+| `/api/bmoni/users/{id}/kyc` | POST | Submit sandbox KYC (test BVN `22222222222`) |
+| `/api/bmoni/users/{id}/onboarding-status` | GET | Check onboarding status |
+| `/api/bmoni/users/{id}/activate-nigeria` | POST | Activate the NGN rail |
+| `/api/bmoni/users/{id}/wallets` | GET | Real wallet list |
+| `/api/bmoni/users/{id}/real-balances` | GET | Real wallet balances |
+| `/api/bmoni/users/{id}/real-transactions` | GET | Real wallet transaction history |
+
 ### Health
 `/api/health` — `{ok, demoMode, bmoniMockMode}`
 
@@ -72,7 +86,7 @@ tests/
 
 ## Notes
 - Uses the official `groq` Python SDK (`whisper-large-v3-turbo` for STT, `openai/gpt-oss-120b` for intent parsing) — requires a real `GROQ_API_KEY` to actually transcribe/parse; without one, `/api/voice/process` and related routes fail (the frontend surfaces this as a network error rather than crashing).
-- BMONI calls use `httpx.AsyncClient`; `bmoniMockMode` in `/api/health` reflects whether real BMONI credentials are configured.
+- BMONI calls use `httpx.AsyncClient` against the real sandbox (`x-api-key` auth, no `/v1` appended to the base URL) once `BMONI_API_KEY`/`BMONI_OWNER_PRIVATE_KEY` are set; `bmoniMockMode` in `/api/health` reflects that. The self-custodied wallet's owner-proof challenge is signed with `eth_account` (standard EIP-191) since this backend has no Flutter/React Native SDK access. The actual money-movement (transfer/withdrawal) endpoint isn't documented in BMONI's hackathon quick-start guide, so `create_transfer` stays mocked until that shape is confirmed.
 - Pydantic (`models.py`) validates request bodies — malformed shapes get a 422 automatically.
 - CORS is wide open (`allow_origins=["*"]`) for hackathon simplicity — tighten before this goes beyond a demo.
 - `voice_auth.py` is a heuristic pre-check (cosine similarity over MFCC vectors), not trained speaker-verification. Face capture is the real authorization gate; voice only decides whether a session skips straight to it.
