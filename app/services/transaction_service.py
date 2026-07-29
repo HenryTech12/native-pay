@@ -8,7 +8,7 @@ produces identical transaction behavior against the same frontend.
 from typing import Optional
 
 from app.models import TransactionRecord
-from app.services import store
+from app.services import paystack_service, store
 from app.services.bmoni_service import create_transfer
 
 STATES = {
@@ -73,12 +73,15 @@ def evaluate_intent(
     return store.update_transaction(record.id, state=next_state, recipientAccount=recipient_account)
 
 
-def resolve_recipient_by_account(tx_id: str, account_number: str) -> Optional[TransactionRecord]:
+async def resolve_recipient_by_account(tx_id: str, account_number: str, bank_code: str) -> Optional[TransactionRecord]:
     """
     Real bank transfers don't match a spoken name against a contact list —
-    they take an account number, look up the account holder (a "name
-    enquiry"), and only proceed once that identity is confirmed. This is
-    the recovery path for a send whose recipient name wasn't recognized.
+    they take an account number, look up the account holder via a real
+    name-enquiry (Paystack's resolve-account API), and only proceed once
+    that identity is confirmed. This is the recovery path for a send
+    whose recipient name wasn't recognized against the local contact
+    book (store.recipients, kept as a fast path for the 3 seeded demo
+    contacts — this covers everyone else).
     """
     tx = store.get_transaction(tx_id)
     if not tx:
@@ -86,21 +89,23 @@ def resolve_recipient_by_account(tx_id: str, account_number: str) -> Optional[Tr
     if tx.state != STATES["UNKNOWN_RECIPIENT"]:
         return tx.model_copy(update={"error": f"Cannot resolve recipient from state {tx.state}"})
 
-    match = store.find_recipient_by_account(account_number)
-    if not match:
-        return store.update_transaction(tx_id, error="ACCOUNT_NOT_FOUND")
-    key, matched_recipient = match
+    try:
+        resolved = await paystack_service.resolve_account(account_number, bank_code)
+    except Exception as err:
+        return store.update_transaction(tx_id, error=f"ACCOUNT_NOT_FOUND: {err}")
+
+    resolved_name = resolved["account_name"]
 
     account = store.get_account(tx.userId)
     if account and tx.amount and tx.amount > account.balance:
         return store.update_transaction(
-            tx_id, state=STATES["INSUFFICIENT_FUNDS"], recipient=key,
-            recipientAccount=matched_recipient.account, needsClarification=None, error=None,
+            tx_id, state=STATES["INSUFFICIENT_FUNDS"], recipient=resolved_name,
+            recipientAccount=account_number, needsClarification=None, error=None,
         )
 
     return store.update_transaction(
-        tx_id, state=STATES["CONFIRMATION_REQUIRED"], recipient=key,
-        recipientAccount=matched_recipient.account, needsClarification=None, error=None,
+        tx_id, state=STATES["CONFIRMATION_REQUIRED"], recipient=resolved_name,
+        recipientAccount=account_number, needsClarification=None, error=None,
     )
 
 
