@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -11,6 +12,8 @@ from pydantic import BaseModel
 from app.services import bmoni_service, groq_service, store, transaction_service, voice_auth, yarngpt_service
 from app.services.languages import supported_languages
 from app.services.transaction_service import STATES
+
+logger = logging.getLogger("nativepay")
 
 app = FastAPI(title="NativePay API")
 
@@ -43,6 +46,7 @@ async def tts(body: TtsBody):
         audio = await yarngpt_service.synthesize_speech(body.text, body.language)
         return Response(content=audio, media_type="audio/mpeg")
     except Exception as err:
+        logger.error("tts failed: %s", err, exc_info=True)
         raise HTTPException(status_code=502, detail={"error": "TTS_UNAVAILABLE", "message": str(err)})
 
 
@@ -54,6 +58,7 @@ async def voice_process(audio: UploadFile = File(...), language: Optional[str] =
         intent = await groq_service.parse_intent(text)
         return {"text": text, "intent": intent.model_dump()}
     except Exception as err:
+        logger.error("voice_process failed: %s", err, exc_info=True)
         raise HTTPException(status_code=500, detail={"error": "NETWORK_ERROR", "message": str(err)})
 
 
@@ -64,6 +69,7 @@ async def transcribe(audio: UploadFile = File(...), language: Optional[str] = Fo
         text = await groq_service.transcribe_audio(audio_bytes, audio.filename, language)
         return {"text": text}
     except Exception as err:
+        logger.error("transcribe failed: %s", err, exc_info=True)
         raise HTTPException(status_code=500, detail={"error": "NETWORK_ERROR", "message": str(err)})
 
 
@@ -76,6 +82,7 @@ async def ai_intent(body: IntentTextBody):
     try:
         return (await groq_service.parse_intent(body.text)).model_dump()
     except Exception as err:
+        logger.error("ai_intent failed: %s", err, exc_info=True)
         raise HTTPException(status_code=500, detail={"error": "NETWORK_ERROR", "message": str(err)})
 
 
@@ -143,6 +150,7 @@ async def transactions_send(body: SendBody):
     except HTTPException:
         raise
     except Exception as err:
+        logger.error("transactions_send failed: %s", err, exc_info=True)
         raise HTTPException(status_code=500, detail={"error": "BMONI_API_ERROR", "message": str(err)})
 
 
@@ -175,6 +183,7 @@ def accounts_balance(account_id: str):
         balance = transaction_service.get_account_balance(account_id)
         return {"accountId": account_id, "balance": balance, "currency": "NGN"}
     except Exception as err:
+        logger.error("accounts_balance failed: %s", err, exc_info=True)
         raise HTTPException(status_code=500, detail={"error": "BMONI_API_ERROR", "message": str(err)})
 
 
