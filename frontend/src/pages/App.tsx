@@ -4,13 +4,13 @@ import {
   voiceProcess, confirmCreate, confirmAdvance, cancelTransaction,
   verifyFace, sendTransaction, getReceipt, getBalance,
   authorizeVoice, getVoiceStatus, getAccount, getAccountByCard,
-  resolveRecipientByAccount
+  resolveRecipientByAccount, getBanks
 } from "../lib/api";
 import { recordAudio, blobToMfccVector } from "../lib/audio";
 import { generateChallenge } from "../lib/challenge";
 import { phrase, speak, LANGUAGES } from "../lib/phrases";
 import DeviceFrame from "../components/DeviceFrame";
-import type { TransactionRecord, Receipt, Action } from "../types";
+import type { TransactionRecord, Receipt, Action, Bank } from "../types";
 
 type Step =
   | "card" | "start" | "auth" | "faceAuth" | "authFailed"
@@ -87,10 +87,18 @@ export default function App() {
   const [challenge, setChallenge] = useState<{ digits: string; spoken: string } | null>(null);
   const [authStatus, setAuthStatus] = useState("");
   const [accountNumberInput, setAccountNumberInput] = useState("");
+  const [bankCode, setBankCode] = useState("");
+  const [banks, setBanks] = useState<Bank[]>([]);
   const [accountNumberError, setAccountNumberError] = useState("");
 
   const recorderRef = useRef<{ stop: () => void; result: Promise<Blob> } | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    if (step === "clarify" && tx?.needsClarification === "accountNumber" && banks.length === 0) {
+      getBanks().then(setBanks).catch(() => {});
+    }
+  }, [step, tx?.needsClarification]);
 
   useEffect(() => {
     if ((step === "face" || step === "faceAuth") && videoRef.current) {
@@ -107,7 +115,7 @@ export default function App() {
 
   function resetAll() {
     setTx(null); setReceipt(null); setTranscript(""); setBalance(null);
-    setAccountNumberInput(""); setAccountNumberError("");
+    setAccountNumberInput(""); setAccountNumberError(""); setBankCode("");
     setStep("listen");
   }
 
@@ -159,7 +167,7 @@ export default function App() {
   async function onSubmitAccountNumber() {
     if (!tx) return;
     setAccountNumberError("");
-    const resolved = await resolveRecipientByAccount(tx.id, accountNumberInput);
+    const resolved = await resolveRecipientByAccount(tx.id, accountNumberInput, bankCode);
     setTx(resolved);
 
     if (resolved.state === "CONFIRMATION_REQUIRED") {
@@ -485,8 +493,12 @@ export default function App() {
           {step === "clarify" && tx?.needsClarification === "accountNumber" && (
             <div style={s.micStage}>
               <div style={{ ...s.to, fontSize: 15, color: "var(--indigo)", fontWeight: 600, textAlign: "center" }}>
-                I don't recognize that name. What's their account number?
+                I don't recognize that name. What's their bank and account number?
               </div>
+              <select style={s.input} value={bankCode} onChange={(e) => setBankCode(e.target.value)}>
+                <option value="">{banks.length ? "Select bank" : "Loading banks..."}</option>
+                {banks.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
+              </select>
               <input
                 style={s.input}
                 value={accountNumberInput}
@@ -495,7 +507,7 @@ export default function App() {
                 inputMode="numeric"
               />
               {accountNumberError && <div style={s.cardErrorText}>{accountNumberError}</div>}
-              <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} disabled={accountNumberInput.length < 10} onClick={onSubmitAccountNumber}>Look up</button>
+              <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} disabled={accountNumberInput.length < 10 || !bankCode} onClick={onSubmitAccountNumber}>Look up</button>
             </div>
           )}
 
