@@ -145,7 +145,7 @@ export default function Onboarding() {
             <div style={s.micStage}>
               <div style={s.hint}>{phrase(lang, "askFullName")}</div>
               <button style={{ ...s.micBtn, ...(isRecording ? s.micBtnRecording : {}) }} onClick={() => captureTranscript((text) => { setFullName(text); setStep("address"); })}>🎤</button>
-              <div style={s.transcript}>{fullName || " "}</div>
+              <div style={s.transcript}>{fullName || " "}</div>
               <div style={s.hint}>{status}</div>
             </div>
           )}
@@ -154,7 +154,7 @@ export default function Onboarding() {
             <div style={s.micStage}>
               <div style={s.hint}>{phrase(lang, "askAddress")}</div>
               <button style={{ ...s.micBtn, ...(isRecording ? s.micBtnRecording : {}) }} onClick={() => captureTranscript((text) => { setAddress(text); setStep("voiceprint"); })}>🎤</button>
-              <div style={s.transcript}>{address || " "}</div>
+              <div style={s.transcript}>{address || " "}</div>
               <div style={s.hint}>{status}</div>
             </div>
           )}

@@ -60,6 +60,19 @@ class Recipient(BaseModel):
     account: str
 
 
+class AgentBmoniProfile(BaseModel):
+    """The POS agent's (or platform's) own BMONI identity — not the
+    customer's. Customers only ever have a local NativePay ledger
+    balance (Account.balance); the agent is the one real, KYC'd business
+    operator whose wallet actually moves money through BMONI when cash
+    is dispensed. Onboarded once, shared across every customer session."""
+    bmoniUserId: Optional[str] = None
+    bmoniSmartWalletId: Optional[str] = None
+    bmoniWalletAddress: Optional[str] = None
+    bmoniWithdrawalAccountId: Optional[str] = None
+    bmoniOnboarded: bool = False
+
+
 class Receipt(BaseModel):
     transactionId: str
     type: Action

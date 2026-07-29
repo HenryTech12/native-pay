@@ -52,10 +52,21 @@ python -m pytest tests/ -v
 | `/api/transactions/{id}/receipt` | GET | Receipt for a `TRANSACTION_SUCCESS` transaction |
 
 ### BMONI onboarding + withdrawal (real sandbox, per BMONI's OpenAPI reference)
-Self-custodied smart-wallet flow: create user → create wallet (owner-proof challenge + EIP-191 signature) → KYC (profile PATCH + SumSub activation) → activate NGN rail → read wallet/balance/transactions → withdraw to a real Nigerian bank account (offramp proposal + EIP-712 signature). Runs in mock mode until `BMONI_API_KEY`/`BMONI_OWNER_PRIVATE_KEY` are set.
+BMONI identity belongs to the **POS agent/platform, not the customer** — like real agent-banking networks (OPay, Moniepoint, Paga agents), the agent is the one KYC'd business operator with a real wallet; customers only ever have a local NativePay ledger balance (`store.accounts`) and never touch BMONI's KYC/SumSub review themselves. That would reintroduce exactly the digital-onboarding friction NativePay exists to remove.
+
+Self-custodied smart-wallet flow (run once for the agent, not per customer): create user → create wallet (owner-proof challenge + EIP-191 signature) → KYC (profile PATCH + SumSub activation) → activate NGN rail → read wallet/balance/transactions → withdraw to a real Nigerian bank account (offramp proposal + EIP-712 signature). Runs in mock mode until `BMONI_API_KEY`/`BMONI_OWNER_PRIVATE_KEY` are set.
+
 | Route | Method | Purpose |
 |---|---|---|
-| `/api/bmoni/generate-owner-wallet` | POST | One-time: generates the EVM keypair that signs every user's owner-proof challenge and withdrawal proposals |
+| `/api/agent/bmoni-onboard` | POST | **One-time setup for the agent's own BMONI identity** — runs the full chain (user → wallet → KYC → activate rail → optional bank-account link) and persists it to the shared `AgentBmoniProfile`. Idempotent — no-ops if already onboarded. |
+| `/api/agent/bmoni-status` | GET | The agent's current BMONI onboarding state |
+
+Once the agent's profile is onboarded + bank-linked, every customer's `withdraw` action automatically routes through the real BMONI offramp chain (`transaction_service._execute_real_nigeria_withdrawal`) instead of the mock — the agent's wallet settles the cash, the customer's own local balance is what's debited.
+
+The routes below are granular per-step testing utilities over the raw BMONI API (the `{id}` in each is a `bmoniUserId`, always the agent's in this app — never a customer's):
+| Route | Method | Purpose |
+|---|---|---|
+| `/api/bmoni/generate-owner-wallet` | POST | Generates the EVM keypair that signs owner-proof challenges and withdrawal proposals |
 | `/api/bmoni/users` | POST | Create a BMONI sandbox user (optionally with a BVN to auto-fill profile fields) |
 | `/api/bmoni/users/{id}/wallet` | POST | Owner-proof challenge → sign (EIP-191) → create managed smart wallet |
 | `/api/bmoni/users/{id}/kyc` | POST | PATCH the KYC profile (BVN) then activate it for SumSub review |
@@ -67,7 +78,7 @@ Self-custodied smart-wallet flow: create user → create wallet (owner-proof cha
 | `/api/bmoni/users/{id}/nigerian-banks` | GET | Supported banks + CBN codes for withdrawal |
 | `/api/bmoni/users/{id}/verify-nigerian-account` | POST | Name-enquiry on a Nigerian account number before creating a withdrawal account |
 | `/api/bmoni/users/{id}/withdrawal-account` | POST | Register the payout bank account a withdrawal settles to |
-| `/api/bmoni/users/{id}/withdraw-nigeria` | POST | Full real withdrawal round trip: creates the offramp proposal, signs the EIP-712 payload, submits the signature — the one BMONI-powered financial function that actually moves money in this demo |
+| `/api/bmoni/users/{id}/withdraw-nigeria` | POST | Full real withdrawal round trip: creates the offramp proposal, signs the EIP-712 payload, submits the signature |
 
 There's no BMONI endpoint for arbitrary P2P "send" or an NGN-only deposit (only card/crypto deposit exist), so this app's send/deposit/airtime actions keep using its own balance bookkeeping — matching the quick-start doc's note that sandbox wallets are funded manually by BMONI staff, not via API.
 
