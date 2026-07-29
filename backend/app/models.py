@@ -1,7 +1,7 @@
 from typing import Literal, Optional
 from pydantic import BaseModel
 
-Action = Literal["send", "balance", "withdraw", "airtime", "bill", "unknown"]
+Action = Literal["send", "balance", "withdraw", "deposit", "airtime", "bill", "unknown"]
 
 TransactionState = Literal[
     "INTENT_DETECTED",
@@ -14,6 +14,7 @@ TransactionState = Literal[
     "TRANSACTION_SUCCESS",
     "USER_CANCELLED",
     "INVALID_AMOUNT",
+    "INSUFFICIENT_FUNDS",
     "UNKNOWN_RECIPIENT",
     "LOW_AI_CONFIDENCE",
     "TRANSACTION_FAILED",

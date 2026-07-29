@@ -6,12 +6,12 @@ import type { TransactionRecord } from "../types";
 
 function stateColor(state: string): string {
   if (state === "TRANSACTION_SUCCESS") return "#3D7A5C";
-  if (["TRANSACTION_FAILED", "FACE_VERIFICATION_FAILED", "BMONI_API_ERROR", "INVALID_AMOUNT", "UNKNOWN_RECIPIENT", "USER_CANCELLED"].includes(state)) return "#B23A2E";
+  if (["TRANSACTION_FAILED", "FACE_VERIFICATION_FAILED", "BMONI_API_ERROR", "INVALID_AMOUNT", "INSUFFICIENT_FUNDS", "UNKNOWN_RECIPIENT", "USER_CANCELLED"].includes(state)) return "#B23A2E";
   return "#C98A2C";
 }
 
 function actionLabel(action: string): string {
-  return { send: "Sent", withdraw: "Withdrew", balance: "Balance check" }[action] || action;
+  return { send: "Sent", withdraw: "Withdrew", deposit: "Deposited", airtime: "Bought airtime", balance: "Balance check" }[action] || action;
 }
 
 export default function History() {
@@ -43,7 +43,7 @@ export default function History() {
             <div key={tx.id} style={s.txRow}>
               <div>
                 <div style={s.txTitle}>
-                  {actionLabel(tx.action)}{tx.amount ? ` ₦${tx.amount.toLocaleString()}` : ""}{tx.recipient ? ` to ${tx.recipient}` : ""}
+                  {actionLabel(tx.action)}{tx.amount ? ` ₦${tx.amount.toLocaleString()}` : ""}{tx.recipient ? `${tx.action === "airtime" ? " for " : " to "}${tx.recipient}` : ""}
                 </div>
                 <div style={s.txMeta}>{tx.id} · {new Date(tx.createdAt).toLocaleString()}</div>
               </div>

@@ -87,6 +87,15 @@ def get_account(user_id: str) -> Optional[Account]:
     return accounts.get(user_id)
 
 
+def adjust_balance(user_id: str, delta: int) -> Optional[Account]:
+    account = accounts.get(user_id)
+    if not account:
+        return None
+    updated = account.model_copy(update={"balance": account.balance + delta})
+    accounts[user_id] = updated
+    return updated
+
+
 def get_account_by_card(card_number: str) -> Optional[Account]:
     user_id = accounts_by_card.get(_normalize_card(card_number))
     return accounts.get(user_id) if user_id else None
