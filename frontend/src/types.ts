@@ -31,13 +31,14 @@ export interface TransactionRecord {
   action: Action;
   amount: number | null;
   recipient: string | null;
+  recipientAccount: string | null;
   confidence: number | null;
   state: TransactionState;
   createdAt: string;
   faceVerified: boolean;
   bmoniReference: string | null;
   error: string | null;
-  needsClarification?: "amount" | "recipient";
+  needsClarification?: "amount" | "recipient" | "accountNumber";
 }
 
 export interface Receipt {

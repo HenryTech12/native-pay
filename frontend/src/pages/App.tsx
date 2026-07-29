@@ -3,7 +3,8 @@ import { Link } from "react-router-dom";
 import {
   voiceProcess, confirmCreate, confirmAdvance, cancelTransaction,
   verifyFace, sendTransaction, getReceipt, getBalance,
-  authorizeVoice, getVoiceStatus, getAccount, getAccountByCard
+  authorizeVoice, getVoiceStatus, getAccount, getAccountByCard,
+  resolveRecipientByAccount
 } from "../lib/api";
 import { recordAudio, blobToMfccVector } from "../lib/audio";
 import { generateChallenge } from "../lib/challenge";
@@ -85,6 +86,8 @@ export default function App() {
   const [inserting, setInserting] = useState(false);
   const [challenge, setChallenge] = useState<{ digits: string; spoken: string } | null>(null);
   const [authStatus, setAuthStatus] = useState("");
+  const [accountNumberInput, setAccountNumberInput] = useState("");
+  const [accountNumberError, setAccountNumberError] = useState("");
 
   const recorderRef = useRef<{ stop: () => void; result: Promise<Blob> } | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -104,6 +107,7 @@ export default function App() {
 
   function resetAll() {
     setTx(null); setReceipt(null); setTranscript(""); setBalance(null);
+    setAccountNumberInput(""); setAccountNumberError("");
     setStep("listen");
   }
 
@@ -144,8 +148,34 @@ export default function App() {
   }
 
   function onKeypadPress(key: string) {
-    if (step !== "card" || !/\d/.test(key)) return;
-    setCardNumber((prev) => formatCardNumber(prev.replace(/\D/g, "") + key));
+    if (!/\d/.test(key)) return;
+    if (step === "card") {
+      setCardNumber((prev) => formatCardNumber(prev.replace(/\D/g, "") + key));
+    } else if (step === "clarify" && tx?.needsClarification === "accountNumber") {
+      setAccountNumberInput((prev) => (prev + key).slice(0, 10));
+    }
+  }
+
+  async function onSubmitAccountNumber() {
+    if (!tx) return;
+    setAccountNumberError("");
+    const resolved = await resolveRecipientByAccount(tx.id, accountNumberInput);
+    setTx(resolved);
+
+    if (resolved.state === "CONFIRMATION_REQUIRED") {
+      const lang = LANGUAGES[langIdx].code;
+      speak(confirmPhraseFor(lang, resolved.action, resolved.amount, resolved.recipient), lang);
+      setStep("confirm");
+      return;
+    }
+    if (resolved.state === "INSUFFICIENT_FUNDS") {
+      setErrorCode("INSUFFICIENT_FUNDS");
+      setStep("error");
+      return;
+    }
+    if (resolved.error === "ACCOUNT_NOT_FOUND") {
+      setAccountNumberError("That account number isn't recognized. Check it and try again.");
+    }
   }
 
   async function toggleAuthRecording() {
@@ -439,7 +469,9 @@ export default function App() {
                 <div style={s.to}>{actionTitle(tx.action)}</div>
                 <div style={s.amount}>₦{(tx.amount || 0).toLocaleString()}</div>
                 <div style={s.to}>
-                  {tx.action === "send" ? `to ${tx.recipient}` : tx.action === "airtime" ? `for ${tx.recipient}` : ""}
+                  {tx.action === "send"
+                    ? `to ${tx.recipient}${tx.recipientAccount ? ` (${tx.recipientAccount})` : ""}`
+                    : tx.action === "airtime" ? `for ${tx.recipient}` : ""}
                 </div>
                 <div style={s.badgeRow}><span style={{ ...s.badge, ...s.badgeGold }}>Confidence {Math.round((tx.confidence || 0) * 100)}%</span></div>
               </div>
@@ -450,7 +482,24 @@ export default function App() {
             </>
           )}
 
-          {step === "clarify" && (
+          {step === "clarify" && tx?.needsClarification === "accountNumber" && (
+            <div style={s.micStage}>
+              <div style={{ ...s.to, fontSize: 15, color: "var(--indigo)", fontWeight: 600, textAlign: "center" }}>
+                I don't recognize that name. What's their account number?
+              </div>
+              <input
+                style={s.input}
+                value={accountNumberInput}
+                onChange={(e) => setAccountNumberInput(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                placeholder="Account number"
+                inputMode="numeric"
+              />
+              {accountNumberError && <div style={s.cardErrorText}>{accountNumberError}</div>}
+              <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} disabled={accountNumberInput.length < 10} onClick={onSubmitAccountNumber}>Look up</button>
+            </div>
+          )}
+
+          {step === "clarify" && tx?.needsClarification !== "accountNumber" && (
             <>
               <div style={s.confirmCard}>
                 <div style={{ ...s.to, fontSize: 15, color: "var(--indigo)", fontWeight: 600 }}>
@@ -509,7 +558,12 @@ export default function App() {
               <div style={s.receipt}>
                 <h3 style={s.receiptH3}>✓ {successTitle(tx.action)} successful</h3>
                 <div style={s.receiptRow}><span>Amount</span><span>₦{(tx.amount || 0).toLocaleString()}</span></div>
-                {tx.action === "send" && <div style={s.receiptRow}><span>Recipient</span><span>{tx.recipient}</span></div>}
+                {tx.action === "send" && (
+                  <div style={s.receiptRow}>
+                    <span>Recipient</span>
+                    <span>{tx.recipient}{tx.recipientAccount ? ` (${tx.recipientAccount})` : ""}</span>
+                  </div>
+                )}
                 {tx.action === "airtime" && <div style={s.receiptRow}><span>Phone number</span><span>{tx.recipient}</span></div>}
                 <div style={s.receiptRow}><span>Transaction ID</span><span>{receipt.transactionId}</span></div>
                 <div style={s.receiptRow}><span>Reference</span><span>{receipt.reference}</span></div>

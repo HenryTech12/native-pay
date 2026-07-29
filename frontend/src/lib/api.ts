@@ -62,6 +62,15 @@ export async function cancelTransaction(id: string): Promise<TransactionRecord> 
   return asJson(res);
 }
 
+export async function resolveRecipientByAccount(id: string, accountNumber: string): Promise<TransactionRecord> {
+  const res = await fetch(`${API_BASE}/api/transactions/resolve-recipient`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, accountNumber })
+  });
+  return asJson(res);
+}
+
 export async function verifyFace(id: string, matched: boolean): Promise<TransactionRecord> {
   const res = await fetch(`${API_BASE}/api/transactions/verify-face`, {
     method: "POST",
