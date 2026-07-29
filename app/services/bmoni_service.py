@@ -1,5 +1,6 @@
 """
-BMONI sandbox integration, per BMONI's hackathon quick-start doc:
+BMONI sandbox integration, per BMONI's hackathon quick-start doc and the
+full OpenAPI reference at embedded-dev.bmoni.com/docs:
 
     Create user -> Create wallet -> Complete KYC -> Activate NGN rail ->
     Fund wallet -> Read or move money
@@ -7,18 +8,26 @@ BMONI sandbox integration, per BMONI's hackathon quick-start doc:
 Mock mode runs automatically whenever BMONI_API_KEY is unset, so the rest
 of the app stays testable before real sandbox access is confirmed.
 
-Wallets are self-custodied: BMONI expects an owner keypair whose address
-signs a server-issued challenge message. The quick-start doc points teams
-at BMONI's Flutter/React Native SDK to do that signing, but this backend
-is plain Python/FastAPI, so signing is done here with eth_account instead
-(standard EIP-191 personal-sign — verification is address recovery via
-ecrecover, so it doesn't matter which library produced the signature).
+Wallets are self-custodied smart contract wallets (ERC-4337-style). BMONI
+expects an owner keypair whose address:
+  1. Signs a short-lived EIP-191 challenge message to prove ownership
+     before wallet creation (owner-proof-challenges / create-managed).
+  2. Signs an EIP-712 typed-data payload to authorize each money-moving
+     proposal (e.g. a Nigeria bank withdrawal) before it's submitted
+     on-chain (withdrawal/wallet/nigeria -> proposals/{id}/sign).
+BMONI's own SDK (Flutter/React Native) normally does this signing, but
+this backend is plain Python/FastAPI, so both signature types are
+produced here with eth_account instead — verification on BMONI's side is
+just ECDSA address recovery, so it doesn't matter which library produced
+a given signature.
 
-Several field names below (the challenge response shape, the
-create-managed-wallet body, the KYC submission endpoint) are inferred
-from the quick-start doc's partial examples, not the full interactive API
-reference (embedded-dev.bmoni.com/docs) — expect to need small corrections
-once this runs against the live sandbox for the first time.
+Real money movement in this demo is scoped to Nigeria bank withdrawal
+(withdraw action) — the one BMONI flow with a fully documented request/
+response shape for cash-out to a real Nigerian bank account. There's no
+BMONI endpoint for P2P "send" between arbitrary recipients or NGN-only
+deposit (BMONI's deposit endpoints are card/crypto-only), so those stay
+on this app's own balance bookkeeping — matching the quick-start doc's
+note that sandbox wallets are funded manually by BMONI staff, not via API.
 """
 
 import asyncio
@@ -29,7 +38,7 @@ from typing import Optional
 
 import httpx
 from eth_account import Account
-from eth_account.messages import encode_defunct
+from eth_account.messages import encode_defunct, encode_typed_data
 
 from app.models import TransactionRecord
 
@@ -41,6 +50,8 @@ MOCK_MODE = not API_KEY or API_KEY == "your_bmoni_sandbox_key_here"
 
 SANDBOX_TEST_BVN = "22222222222"
 SANDBOX_COUNTRY_CODE = "NGA"
+WALLET_CURRENCY = "CNGN"  # doc: "Use CNGN, not NGN, when a wallet endpoint asks for the wallet currency."
+DEFAULT_SUMSUB_LEVEL = "id-and-liveness"
 
 
 def _headers() -> dict:
@@ -73,14 +84,19 @@ def _owner_account() -> Account:
     return Account.from_key(OWNER_PRIVATE_KEY)
 
 
-async def create_user(first_name: str, email: str, phone_number: str) -> dict:
+async def create_user(
+    first_name: str, email: str, phone_number: str, bvn: Optional[str] = None,
+) -> dict:
+    """Passing a BVN auto-fills lastName/middleName/address/dateOfBirth
+    from the BVN record server-side — useful for the sandbox test BVN."""
     if MOCK_MODE:
         await asyncio.sleep(0.2)
         return {"bmoniUserId": f"mock-user-{random.randint(100000, 999999)}", "environment": "sandbox-mock"}
+    body = {"firstName": first_name, "email": email, "phoneNumber": phone_number}
+    if bvn:
+        body["bvn"] = bvn
     async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
-        res = await client.post("/v1/users", json={
-            "firstName": first_name, "email": email, "phoneNumber": phone_number,
-        })
+        res = await client.post("/v1/users", json=body)
         if res.status_code >= 400:
             raise RuntimeError(f"BMONI create_user failed ({res.status_code}): {res.text}")
         return res.json()
@@ -88,35 +104,30 @@ async def create_user(first_name: str, email: str, phone_number: str) -> dict:
 
 async def create_smart_wallet(user_id: str) -> dict:
     """Requests an owner-proof challenge, signs it with our owner keypair,
-    then creates the managed smart wallet. CNGN per the quick-start doc's
-    note: use CNGN, not NGN, for the wallet currency."""
+    then creates the managed smart wallet."""
     if MOCK_MODE:
         await asyncio.sleep(0.2)
-        return {"smartWalletId": f"mock-wallet-{random.randint(100000, 999999)}", "address": "0xMOCK", "environment": "sandbox-mock"}
+        return {"id": f"mock-wallet-{random.randint(100000, 999999)}", "walletAddress": "0xMOCK", "environment": "sandbox-mock"}
 
     owner = _owner_account()
     async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
         challenge_res = await client.post(
             f"/v1/users/{user_id}/smart-wallets/owner-proof-challenges",
-            json={"currency": "CNGN", "userOwnerAddress": owner.address},
+            json={"currency": WALLET_CURRENCY, "userOwnerAddress": owner.address},
         )
         if challenge_res.status_code >= 400:
             raise RuntimeError(f"BMONI owner-proof-challenge failed ({challenge_res.status_code}): {challenge_res.text}")
         challenge = challenge_res.json()
 
-        challenge_id = challenge.get("challengeId") or challenge.get("id")
-        message = challenge.get("message") or challenge.get("challenge")
-        if not message:
-            raise RuntimeError(f"BMONI owner-proof-challenge response had no signable message field: {challenge}")
-
-        signed = Account.sign_message(encode_defunct(text=message), private_key=owner.key)
+        signed = Account.sign_message(encode_defunct(text=challenge["message"]), private_key=owner.key)
 
         create_res = await client.post(
             f"/v1/users/{user_id}/smart-wallets/create-managed",
             json={
-                "challengeId": challenge_id,
-                "signature": signed.signature.hex(),
-                "ownerAddress": owner.address,
+                "currency": WALLET_CURRENCY,
+                "userOwnerAddress": owner.address,
+                "ownerProofChallengeId": challenge["challengeId"],
+                "ownerProofSignature": signed.signature.hex(),
             },
         )
         if create_res.status_code >= 400:
@@ -124,26 +135,41 @@ async def create_smart_wallet(user_id: str) -> dict:
         return create_res.json()
 
 
-async def submit_kyc(user_id: str, bvn: str = SANDBOX_TEST_BVN, country_code: str = SANDBOX_COUNTRY_CODE) -> dict:
-    """Endpoint path/body inferred — the quick-start doc only documents the
-    status-check GET, not the submission POST. Verify against
-    embedded-dev.bmoni.com/docs before relying on this in the live demo."""
+async def submit_kyc(
+    user_id: str,
+    first_name: str,
+    phone_number: str,
+    bvn: str = SANDBOX_TEST_BVN,
+) -> dict:
+    """Two-step: PATCH the KYC profile (identity + address), then activate
+    it for SumSub review. Nigeria's sandbox BVN auto-fills most of the
+    profile at user-creation time if it was passed to create_user."""
     if MOCK_MODE:
         await asyncio.sleep(0.2)
-        return {"status": "pending", "environment": "sandbox-mock"}
+        return {"activated": True, "environment": "sandbox-mock"}
     async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
-        res = await client.post(f"/v1/users/{user_id}/onboarding/kyc", json={
-            "bvn": bvn, "countryCode": country_code,
+        patch_res = await client.patch(f"/v1/users/{user_id}/kyc", json={
+            "personalInfo": {"firstName": first_name, "phoneNumber": phone_number},
+            "address": {"countryCode": SANDBOX_COUNTRY_CODE},
+            "identificationNumbers": [
+                {"type": "bvn", "number": bvn, "issuingCountryCode": SANDBOX_COUNTRY_CODE},
+            ],
         })
-        if res.status_code >= 400:
-            raise RuntimeError(f"BMONI submit_kyc failed ({res.status_code}): {res.text}")
-        return res.json()
+        if patch_res.status_code >= 400:
+            raise RuntimeError(f"BMONI kyc profile update failed ({patch_res.status_code}): {patch_res.text}")
+
+        activate_res = await client.post(f"/v1/users/{user_id}/kyc/activate", json={
+            "sumsubLevelName": DEFAULT_SUMSUB_LEVEL,
+        })
+        if activate_res.status_code >= 400:
+            raise RuntimeError(f"BMONI kyc activate failed ({activate_res.status_code}): {activate_res.text}")
+        return activate_res.json()
 
 
 async def get_onboarding_status(user_id: str) -> dict:
     if MOCK_MODE:
         await asyncio.sleep(0.1)
-        return {"status": "active", "environment": "sandbox-mock"}
+        return {"anchorStatus": "active", "environment": "sandbox-mock"}
     async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
         res = await client.get(f"/v1/users/{user_id}/onboarding/status")
         if res.status_code >= 400:
@@ -151,16 +177,106 @@ async def get_onboarding_status(user_id: str) -> dict:
         return res.json()
 
 
-async def activate_nigeria_rail(user_id: str, wallet_address: str, wallet_index: int = 0, bvn: str = SANDBOX_TEST_BVN) -> dict:
+async def activate_nigeria_rail(
+    user_id: str, ngn_wallet_address: str, ngn_wallet_index: int = 0, bvn: str = SANDBOX_TEST_BVN,
+) -> dict:
     if MOCK_MODE:
         await asyncio.sleep(0.2)
-        return {"status": "active", "environment": "sandbox-mock"}
+        return {"message": "Nigeria onboarding started successfully", "environment": "sandbox-mock"}
     async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
         res = await client.post(f"/v1/users/{user_id}/onboarding/start-nigeria", json={
-            "bvn": bvn, "walletAddress": wallet_address, "walletIndex": wallet_index,
+            "bvn": bvn, "ngnWalletAddress": ngn_wallet_address, "ngnWalletIndex": ngn_wallet_index,
         })
         if res.status_code >= 400:
             raise RuntimeError(f"BMONI start-nigeria failed ({res.status_code}): {res.text}")
+        return res.json()
+
+
+async def list_nigerian_banks(user_id: str) -> dict:
+    if MOCK_MODE:
+        await asyncio.sleep(0.1)
+        return {"banks": [{"bankName": "GTBank", "bankCode": "058"}], "environment": "sandbox-mock"}
+    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
+        res = await client.get(f"/v1/users/{user_id}/bank-accounts/nigerian-banks")
+        if res.status_code >= 400:
+            raise RuntimeError(f"BMONI list_nigerian_banks failed ({res.status_code}): {res.text}")
+        return res.json()
+
+
+async def verify_nigerian_account(user_id: str, bank_code: str, account_number: str) -> dict:
+    if MOCK_MODE:
+        await asyncio.sleep(0.2)
+        return {"accountNumber": account_number, "accountName": "MOCK ACCOUNT HOLDER", "bankName": "Mock Bank", "bankCode": bank_code, "environment": "sandbox-mock"}
+    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
+        res = await client.post(f"/v1/users/{user_id}/bank-accounts/verify-nigerian-account", json={
+            "bankCode": bank_code, "accountNumber": account_number,
+        })
+        if res.status_code >= 400:
+            raise RuntimeError(f"BMONI verify_nigerian_account failed ({res.status_code}): {res.text}")
+        return res.json()
+
+
+async def create_withdrawal_account(
+    user_id: str, account_number: str, bank_code: str, bank_name: str, account_holder_name: str,
+) -> dict:
+    """Looks up or creates the Nigerian payout account a withdrawal will
+    settle to. Call verify_nigerian_account first to get the exact
+    accountHolderName BMONI expects."""
+    if MOCK_MODE:
+        await asyncio.sleep(0.2)
+        return {"id": f"mock-bank-account-{random.randint(100000, 999999)}", "accountNumber": account_number, "bankName": bank_name, "environment": "sandbox-mock"}
+    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
+        res = await client.post(f"/v1/users/{user_id}/bank-accounts/withdrawal-accounts/nigeria", json={
+            "accountNumber": account_number, "bankCode": bank_code,
+            "bankName": bank_name, "accountHolderName": account_holder_name,
+        })
+        if res.status_code >= 400:
+            raise RuntimeError(f"BMONI create_withdrawal_account failed ({res.status_code}): {res.text}")
+        return res.json()
+
+
+async def initiate_nigeria_withdrawal(
+    user_id: str, source_smart_wallet_id: str, bank_account_id: str, from_amount: str,
+) -> dict:
+    """Creates and auto-approves an offramp proposal, returning an
+    EIP-712 sign payload. Sign it (sign_withdrawal_payload) and submit via
+    submit_proposal_signature to actually move money — on-chain execution
+    triggers the equivalent NGN payout via Anchor NIP."""
+    if MOCK_MODE:
+        await asyncio.sleep(0.3)
+        return {"proposalId": f"mock-proposal-{random.randint(100000, 999999)}", "signPayload": {"mock": True}, "environment": "sandbox-mock"}
+    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
+        res = await client.post(f"/v1/users/{user_id}/withdrawal/wallet/nigeria", json={
+            "sourceSmartWalletId": source_smart_wallet_id,
+            "bankAccountId": bank_account_id,
+            "fromAmount": from_amount,
+        })
+        if res.status_code >= 400:
+            raise RuntimeError(f"BMONI initiate_nigeria_withdrawal failed ({res.status_code}): {res.text}")
+        return res.json()
+
+
+def sign_withdrawal_payload(sign_payload: dict) -> str:
+    """The withdrawal proposal's signPayload is a standard EIP-712
+    typed-data object (domain/types/primaryType/message) — sign it
+    directly with the owner key, independent of BMONI's SDK."""
+    owner = _owner_account()
+    typed_data = sign_payload.get("typedData") or sign_payload
+    signable = encode_typed_data(full_message=typed_data)
+    signed = Account.sign_message(signable, private_key=owner.key)
+    return signed.signature.hex()
+
+
+async def submit_proposal_signature(user_id: str, proposal_id: str, signature: str) -> dict:
+    if MOCK_MODE:
+        await asyncio.sleep(0.3)
+        return {"data": {"proposal": {"id": proposal_id, "status": "EXECUTED"}}, "environment": "sandbox-mock"}
+    async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
+        res = await client.post(f"/v1/users/{user_id}/smart-wallets/proposals/{proposal_id}/sign", json={
+            "signature": signature,
+        })
+        if res.status_code >= 400:
+            raise RuntimeError(f"BMONI submit_proposal_signature failed ({res.status_code}): {res.text}")
         return res.json()
 
 
@@ -178,7 +294,7 @@ async def get_wallets(user_id: str) -> dict:
 async def get_real_balances(user_id: str) -> dict:
     if MOCK_MODE:
         await asyncio.sleep(0.1)
-        return {"balances": [], "environment": "sandbox-mock"}
+        return {"data": {"balances": []}, "environment": "sandbox-mock"}
     async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
         res = await client.get(f"/v1/users/{user_id}/smart-wallets/account/balances")
         if res.status_code >= 400:
@@ -186,23 +302,24 @@ async def get_real_balances(user_id: str) -> dict:
         return res.json()
 
 
-async def get_real_transactions(user_id: str) -> dict:
+async def get_real_transactions(user_id: str, smart_wallet_id: str) -> dict:
     if MOCK_MODE:
         await asyncio.sleep(0.1)
         return {"transactions": [], "environment": "sandbox-mock"}
     async with httpx.AsyncClient(base_url=BASE_URL, headers=_headers()) as client:
-        res = await client.get(f"/v1/users/{user_id}/smart-wallets/account/transactions")
+        res = await client.get(f"/v1/users/{user_id}/smart-wallets/{smart_wallet_id}/transactions")
         if res.status_code >= 400:
             raise RuntimeError(f"BMONI get_transactions failed ({res.status_code}): {res.text}")
         return res.json()
 
 
 async def create_transfer(amount: Optional[int], recipient: Optional[str]) -> dict:
-    """Money-movement endpoint isn't specified in the hackathon quick-start
-    doc (only user/wallet/KYC/rail/read endpoints are). Stays mocked until
-    the real withdrawal/fund endpoint shape is confirmed from BMONI's
-    interactive docs or their staff — real reads (balance/transactions
-    above) already hit the live sandbox once onboarding is real."""
+    """Generic app-level transfer used by send/deposit/airtime — these
+    don't map to a documented BMONI endpoint (no P2P-send-to-arbitrary-
+    recipient or NGN-only deposit exists in the API; see module docstring),
+    so they stay on this app's own balance bookkeeping. Real Nigeria
+    withdrawal is handled separately via initiate_nigeria_withdrawal +
+    sign_withdrawal_payload + submit_proposal_signature."""
     await asyncio.sleep(1.0)
     return {
         "status": "success",

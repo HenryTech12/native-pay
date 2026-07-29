@@ -223,12 +223,13 @@ class BmoniCreateUserBody(BaseModel):
     firstName: str
     email: str
     phoneNumber: str
+    bvn: Optional[str] = None
 
 
 @app.post("/api/bmoni/users")
 async def bmoni_create_user(body: BmoniCreateUserBody):
     try:
-        return await bmoni_service.create_user(body.firstName, body.email, body.phoneNumber)
+        return await bmoni_service.create_user(body.firstName, body.email, body.phoneNumber, body.bvn)
     except Exception as err:
         logger.error("bmoni_create_user failed: %s", err, exc_info=True)
         raise HTTPException(status_code=502, detail={"error": "BMONI_API_ERROR", "message": str(err)})
@@ -244,14 +245,15 @@ async def bmoni_create_wallet(user_id: str):
 
 
 class BmoniKycBody(BaseModel):
+    firstName: str
+    phoneNumber: str
     bvn: str = bmoni_service.SANDBOX_TEST_BVN
-    countryCode: str = bmoni_service.SANDBOX_COUNTRY_CODE
 
 
 @app.post("/api/bmoni/users/{user_id}/kyc")
 async def bmoni_submit_kyc(user_id: str, body: BmoniKycBody):
     try:
-        return await bmoni_service.submit_kyc(user_id, body.bvn, body.countryCode)
+        return await bmoni_service.submit_kyc(user_id, body.firstName, body.phoneNumber, body.bvn)
     except Exception as err:
         logger.error("bmoni_submit_kyc failed: %s", err, exc_info=True)
         raise HTTPException(status_code=502, detail={"error": "BMONI_API_ERROR", "message": str(err)})
@@ -267,15 +269,15 @@ async def bmoni_onboarding_status(user_id: str):
 
 
 class BmoniActivateBody(BaseModel):
-    walletAddress: str
-    walletIndex: int = 0
+    ngnWalletAddress: str
+    ngnWalletIndex: int = 0
     bvn: str = bmoni_service.SANDBOX_TEST_BVN
 
 
 @app.post("/api/bmoni/users/{user_id}/activate-nigeria")
 async def bmoni_activate_nigeria(user_id: str, body: BmoniActivateBody):
     try:
-        return await bmoni_service.activate_nigeria_rail(user_id, body.walletAddress, body.walletIndex, body.bvn)
+        return await bmoni_service.activate_nigeria_rail(user_id, body.ngnWalletAddress, body.ngnWalletIndex, body.bvn)
     except Exception as err:
         logger.error("bmoni_activate_nigeria failed: %s", err, exc_info=True)
         raise HTTPException(status_code=502, detail={"error": "BMONI_API_ERROR", "message": str(err)})
@@ -299,12 +301,77 @@ async def bmoni_get_real_balances(user_id: str):
         raise HTTPException(status_code=502, detail={"error": "BMONI_API_ERROR", "message": str(err)})
 
 
-@app.get("/api/bmoni/users/{user_id}/real-transactions")
-async def bmoni_get_real_transactions(user_id: str):
+@app.get("/api/bmoni/users/{user_id}/wallets/{smart_wallet_id}/real-transactions")
+async def bmoni_get_real_transactions(user_id: str, smart_wallet_id: str):
     try:
-        return await bmoni_service.get_real_transactions(user_id)
+        return await bmoni_service.get_real_transactions(user_id, smart_wallet_id)
     except Exception as err:
         logger.error("bmoni_get_real_transactions failed: %s", err, exc_info=True)
+        raise HTTPException(status_code=502, detail={"error": "BMONI_API_ERROR", "message": str(err)})
+
+
+@app.get("/api/bmoni/users/{user_id}/nigerian-banks")
+async def bmoni_list_nigerian_banks(user_id: str):
+    try:
+        return await bmoni_service.list_nigerian_banks(user_id)
+    except Exception as err:
+        logger.error("bmoni_list_nigerian_banks failed: %s", err, exc_info=True)
+        raise HTTPException(status_code=502, detail={"error": "BMONI_API_ERROR", "message": str(err)})
+
+
+class BmoniVerifyAccountBody(BaseModel):
+    bankCode: str
+    accountNumber: str
+
+
+@app.post("/api/bmoni/users/{user_id}/verify-nigerian-account")
+async def bmoni_verify_nigerian_account(user_id: str, body: BmoniVerifyAccountBody):
+    try:
+        return await bmoni_service.verify_nigerian_account(user_id, body.bankCode, body.accountNumber)
+    except Exception as err:
+        logger.error("bmoni_verify_nigerian_account failed: %s", err, exc_info=True)
+        raise HTTPException(status_code=502, detail={"error": "BMONI_API_ERROR", "message": str(err)})
+
+
+class BmoniWithdrawalAccountBody(BaseModel):
+    accountNumber: str
+    bankCode: str
+    bankName: str
+    accountHolderName: str
+
+
+@app.post("/api/bmoni/users/{user_id}/withdrawal-account")
+async def bmoni_create_withdrawal_account(user_id: str, body: BmoniWithdrawalAccountBody):
+    try:
+        return await bmoni_service.create_withdrawal_account(
+            user_id, body.accountNumber, body.bankCode, body.bankName, body.accountHolderName
+        )
+    except Exception as err:
+        logger.error("bmoni_create_withdrawal_account failed: %s", err, exc_info=True)
+        raise HTTPException(status_code=502, detail={"error": "BMONI_API_ERROR", "message": str(err)})
+
+
+class BmoniInitiateWithdrawalBody(BaseModel):
+    sourceSmartWalletId: str
+    bankAccountId: str
+    fromAmount: str
+
+
+@app.post("/api/bmoni/users/{user_id}/withdraw-nigeria")
+async def bmoni_initiate_withdrawal(user_id: str, body: BmoniInitiateWithdrawalBody):
+    """Initiates the offramp proposal, signs the returned EIP-712 payload
+    with our owner key, and submits the signature — a full round trip of
+    the real BMONI withdrawal flow in one call."""
+    try:
+        initiated = await bmoni_service.initiate_nigeria_withdrawal(
+            user_id, body.sourceSmartWalletId, body.bankAccountId, body.fromAmount
+        )
+        if bmoni_service.is_mock_mode() or initiated.get("signPayloadPending"):
+            return initiated
+        signature = bmoni_service.sign_withdrawal_payload(initiated["signPayload"])
+        return await bmoni_service.submit_proposal_signature(user_id, initiated["proposalId"], signature)
+    except Exception as err:
+        logger.error("bmoni_initiate_withdrawal failed: %s", err, exc_info=True)
         raise HTTPException(status_code=502, detail={"error": "BMONI_API_ERROR", "message": str(err)})
 
 
