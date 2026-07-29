@@ -417,26 +417,35 @@ async def agent_bmoni_onboard(body: AgentBmoniOnboardBody):
     once (e.g. right before the live demo), not per customer. Customers
     never onboard onto BMONI themselves; every customer action stays on
     this app's local ledger (see app.services.store.accounts), and only
-    the agent's own wallet moves real money through BMONI."""
-    profile = store.get_agent_bmoni_profile()
-    if profile.bmoniOnboarded:
-        return profile
-    try:
-        identifiers = await bmoni_service.onboard_full(body.firstName, body.email, body.phoneNumber, body.bvn)
-    except Exception as err:
-        logger.error("agent bmoni onboarding failed: %s", err, exc_info=True)
-        raise HTTPException(status_code=502, detail={"error": "BMONI_API_ERROR", "message": str(err)})
-    profile = store.update_agent_bmoni_profile(**identifiers, bmoniOnboarded=True)
+    the agent's own wallet moves real money through BMONI.
 
-    if body.bankAccountNumber and body.bankCode:
+    Idempotent per stage: re-calling this after the user/wallet/KYC/rail
+    stage already succeeded skips straight to (re)attempting bank-account
+    linking if bankAccountNumber/bankCode are supplied and no withdrawal
+    account is linked yet -- so a failed bank link can be retried without
+    redoing the whole chain."""
+    profile = store.get_agent_bmoni_profile()
+
+    if not profile.bmoniOnboarded:
+        try:
+            identifiers = await bmoni_service.onboard_full(body.firstName, body.email, body.phoneNumber, body.bvn)
+        except Exception as err:
+            logger.error("agent bmoni onboarding failed: %s", err, exc_info=True)
+            raise HTTPException(status_code=502, detail={"error": "BMONI_API_ERROR", "message": str(err)})
+        profile = store.update_agent_bmoni_profile(**identifiers, bmoniOnboarded=True)
+
+    bank_link_error = None
+    if body.bankAccountNumber and body.bankCode and not profile.bmoniWithdrawalAccountId:
         try:
             withdrawal_account = await bmoni_service.link_nigerian_bank_account(
-                identifiers["bmoniUserId"], body.bankAccountNumber, body.bankCode
+                profile.bmoniUserId, body.bankAccountNumber, body.bankCode
             )
             profile = store.update_agent_bmoni_profile(bmoniWithdrawalAccountId=withdrawal_account["id"])
         except Exception as err:
             logger.error("agent bank-account linking failed: %s", err, exc_info=True)
-    return profile
+            bank_link_error = str(err)
+
+    return {**profile.model_dump(), "bankLinkError": bank_link_error}
 
 
 @app.get("/api/agent/bmoni-status")
