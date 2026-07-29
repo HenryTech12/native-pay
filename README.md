@@ -80,8 +80,10 @@ app/
   main.py                    FastAPI routes
   models.py                  Pydantic models (mirrors frontend/src/types.ts)
   services/
-    groq_service.py            Whisper STT + LLM intent parsing
-    bmoni_service.py           BMONIService — mock/sandbox adapter
+    groq_service.py            Whisper STT (speech-in) + LLM intent parsing
+    yarngpt_service.py         YarnGPT TTS (speech-out) — Nigerian-accented read-back voice
+    paystack_service.py       Real bank account name-enquiry (recipient resolution)
+    bmoni_service.py           Real BMONI sandbox integration (mock fallback)
     transaction_service.py     State machine, server-side validation
     voice_auth.py              MFCC cosine-similarity voice pre-check
     languages.py                Fixed-phrase translations
@@ -91,8 +93,9 @@ tests/
 ```
 
 ## Notes
-- Uses the official `groq` Python SDK (`whisper-large-v3-turbo` for STT, `openai/gpt-oss-120b` for intent parsing) — requires a real `GROQ_API_KEY` to actually transcribe/parse; without one, `/api/voice/process` and related routes fail (the frontend surfaces this as a network error rather than crashing).
-- BMONI calls use `httpx.AsyncClient` against the real sandbox (`x-api-key` auth, no `/v1` appended to the base URL) once `BMONI_API_KEY`/`BMONI_OWNER_PRIVATE_KEY` are set; `bmoniMockMode` in `/api/health` reflects that. The self-custodied wallet's owner-proof challenge is signed with `eth_account` (standard EIP-191) since this backend has no Flutter/React Native SDK access. The actual money-movement (transfer/withdrawal) endpoint isn't documented in BMONI's hackathon quick-start guide, so `create_transfer` stays mocked until that shape is confirmed.
+- Voice is two separate real integrations, not one: **Whisper** (via the official `groq` SDK, `whisper-large-v3-turbo`) transcribes what the user says (speech-in); **YarnGPT** synthesizes the Nigerian-accented voice that reads confirmations/balances back (speech-out). Requires real `GROQ_API_KEY` / `YARNGPT_API_KEY` respectively — without them, `/api/voice/process` or `/api/tts` fail (the frontend falls back to `speechSynthesis` for TTS, and surfaces STT failures as a network error rather than crashing).
+- `openai/gpt-oss-120b` (also via Groq) does intent parsing from the transcribed text.
+- BMONI calls use `httpx.AsyncClient` against the real sandbox (`x-api-key` auth, no `/v1` appended to the base URL) once `BMONI_API_KEY`/`BMONI_OWNER_PRIVATE_KEY` are set; `bmoniMockMode` in `/api/health` reflects that. The self-custodied wallet's owner-proof challenge is signed with `eth_account` (EIP-191), and Nigeria bank withdrawals are signed with EIP-712 typed data — both since this backend has no Flutter/React Native SDK access. P2P send and NGN deposit have no corresponding BMONI endpoint, so those stay on this app's own balance bookkeeping.
 - Pydantic (`models.py`) validates request bodies — malformed shapes get a 422 automatically.
 - CORS is wide open (`allow_origins=["*"]`) for hackathon simplicity — tighten before this goes beyond a demo.
 - `voice_auth.py` is a heuristic pre-check (cosine similarity over MFCC vectors), not trained speaker-verification. Face capture is the real authorization gate; voice only decides whether a session skips straight to it.
