@@ -1,11 +1,8 @@
 """
-Account storage: Postgres-backed when DATABASE_URL is set (see db.py),
-in-memory dicts otherwise — every other module talks only to these
-functions, never to storage directly, so callers never need to know
-which mode is active. Transactions stay in-memory either way; they're
-session-scoped by nature, not the durability concern real persistence
-was added for (losing a registered account or captured face on restart
-was).
+Account and transaction storage: Postgres-backed when DATABASE_URL is
+set (see db.py), in-memory dicts otherwise — every other module talks
+only to these functions, never to storage directly, so callers never
+need to know which mode is active.
 """
 
 import random
@@ -58,7 +55,10 @@ def create_transaction_record(
         bmoniReference=None,
         error=None,
     )
-    transactions[tx_id] = record
+    if db.is_ready():
+        db.create_transaction(record)
+    else:
+        transactions[tx_id] = record
     return record
 
 
@@ -161,19 +161,26 @@ def find_recipient_by_account(account_number: str) -> Optional[tuple[str, Recipi
 
 
 def get_transaction(tx_id: str) -> Optional[TransactionRecord]:
+    if db.is_ready():
+        return db.get_transaction(tx_id)
     return transactions.get(tx_id)
 
 
 def update_transaction(tx_id: str, **patch) -> Optional[TransactionRecord]:
-    existing = transactions.get(tx_id)
+    existing = get_transaction(tx_id)
     if not existing:
         return None
     updated = existing.model_copy(update=patch)
-    transactions[tx_id] = updated
+    if db.is_ready():
+        db.update_transaction(updated)
+    else:
+        transactions[tx_id] = updated
     return updated
 
 
 def list_transactions(user_id: Optional[str] = None) -> list[TransactionRecord]:
+    if db.is_ready():
+        return db.list_transactions(user_id)
     all_tx = list(transactions.values())
     if user_id:
         all_tx = [t for t in all_tx if t.userId == user_id]

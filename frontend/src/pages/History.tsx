@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { listTransactions } from "../lib/api";
 import DeviceFrame from "../components/DeviceFrame";
 import type { TransactionRecord } from "../types";
@@ -15,14 +15,16 @@ function actionLabel(action: string): string {
 }
 
 export default function History() {
+  const [searchParams] = useSearchParams();
+  const userId = searchParams.get("userId") || "mama-aisha";
   const [txs, setTxs] = useState<TransactionRecord[] | null>(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    listTransactions("mama-aisha")
+    listTransactions(userId)
       .then(setTxs)
       .catch(() => setError(true));
-  }, []);
+  }, [userId]);
 
   return (
     <DeviceFrame>

@@ -1,10 +1,11 @@
 """
 Optional PostgreSQL persistence. Set DATABASE_URL and accounts, face
-descriptors, and voiceprints survive process restarts instead of living
-only in the in-memory dicts in store.py / face_auth.py / voice_auth.py.
-Leave DATABASE_URL unset (local dev, tests) and every caller falls back
-to those in-memory dicts exactly as before — this module changes
-nothing about behavior when it isn't configured.
+descriptors, voiceprints, and transactions survive process restarts
+instead of living only in the in-memory dicts in store.py /
+face_auth.py / voice_auth.py. Leave DATABASE_URL unset (local dev,
+tests) and every caller falls back to those in-memory dicts exactly as
+before — this module changes nothing about behavior when it isn't
+configured.
 
 If DATABASE_URL is set but the connection fails at startup, init_schema()
 logs the error and is_ready() stays False, so the app still runs on the
@@ -16,7 +17,7 @@ import os
 from contextlib import contextmanager
 from typing import Iterator, Optional
 
-from app.models import Account
+from app.models import Account, TransactionRecord
 
 logger = logging.getLogger("nativepay.db")
 
@@ -41,6 +42,22 @@ CREATE TABLE IF NOT EXISTS face_descriptors (
 CREATE TABLE IF NOT EXISTS voiceprints (
     user_id TEXT PRIMARY KEY,
     feature_vector JSONB NOT NULL
+);
+CREATE TABLE IF NOT EXISTS transactions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    amount INTEGER,
+    recipient TEXT,
+    recipient_account TEXT,
+    confidence REAL,
+    state TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    face_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    verification_method TEXT,
+    bmoni_reference TEXT,
+    error TEXT,
+    needs_clarification TEXT
 );
 """
 
@@ -196,3 +213,57 @@ def get_voiceprint(user_id: str) -> Optional[list[float]]:
         cur.execute("SELECT feature_vector FROM voiceprints WHERE user_id = %s", (user_id,))
         row = cur.fetchone()
     return row[0] if row else None
+
+
+_TX_COLUMNS = (
+    "id, user_id, action, amount, recipient, recipient_account, confidence, state, "
+    "created_at, face_verified, verification_method, bmoni_reference, error, needs_clarification"
+)
+
+
+def _row_to_transaction(row) -> TransactionRecord:
+    return TransactionRecord(
+        id=row[0], userId=row[1], action=row[2], amount=row[3], recipient=row[4],
+        recipientAccount=row[5], confidence=row[6], state=row[7], createdAt=row[8],
+        faceVerified=row[9], verificationMethod=row[10], bmoniReference=row[11],
+        error=row[12], needsClarification=row[13],
+    )
+
+
+def create_transaction(tx: TransactionRecord) -> None:
+    with _cursor() as cur:
+        cur.execute(
+            f"INSERT INTO transactions ({_TX_COLUMNS}) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (tx.id, tx.userId, tx.action, tx.amount, tx.recipient, tx.recipientAccount,
+             tx.confidence, tx.state, tx.createdAt, tx.faceVerified, tx.verificationMethod,
+             tx.bmoniReference, tx.error, tx.needsClarification),
+        )
+
+
+def get_transaction(tx_id: str) -> Optional[TransactionRecord]:
+    with _cursor() as cur:
+        cur.execute(f"SELECT {_TX_COLUMNS} FROM transactions WHERE id = %s", (tx_id,))
+        row = cur.fetchone()
+    return _row_to_transaction(row) if row else None
+
+
+def update_transaction(tx: TransactionRecord) -> None:
+    with _cursor() as cur:
+        cur.execute(
+            """UPDATE transactions SET action=%s, amount=%s, recipient=%s, recipient_account=%s,
+               confidence=%s, state=%s, face_verified=%s, verification_method=%s,
+               bmoni_reference=%s, error=%s, needs_clarification=%s WHERE id=%s""",
+            (tx.action, tx.amount, tx.recipient, tx.recipientAccount, tx.confidence, tx.state,
+             tx.faceVerified, tx.verificationMethod, tx.bmoniReference, tx.error,
+             tx.needsClarification, tx.id),
+        )
+
+
+def list_transactions(user_id: Optional[str] = None) -> list[TransactionRecord]:
+    with _cursor() as cur:
+        if user_id:
+            cur.execute(f"SELECT {_TX_COLUMNS} FROM transactions WHERE user_id = %s ORDER BY created_at DESC", (user_id,))
+        else:
+            cur.execute(f"SELECT {_TX_COLUMNS} FROM transactions ORDER BY created_at DESC")
+        rows = cur.fetchall()
+    return [_row_to_transaction(r) for r in rows]
