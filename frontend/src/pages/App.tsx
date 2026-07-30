@@ -676,7 +676,7 @@ export default function App() {
         <footer style={s.footer}>
           <span className="clickable" style={s.resetLink} onClick={resetAll}>Start over</span>
           <span style={{ margin: "0 8px", color: "#c9c2b4" }}>·</span>
-          <Link to="/history" style={s.resetLink}>History</Link>
+          <Link to={`/history?userId=${encodeURIComponent(userId)}`} style={s.resetLink}>History</Link>
         </footer>
       </div>
     </DeviceFrame>
