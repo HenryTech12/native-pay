@@ -1,6 +1,6 @@
-# NativePay Backend
+# ElderPay Backend
 
-FastAPI service backing the NativePay frontend: speech-to-text + intent parsing, the transaction state machine, face-based auth, and account enrollment. Storage is in-memory unless `DATABASE_URL` is set (Postgres); BMONI runs in sandbox mode — built for the NITHUB Innovation Fair Hackathon 2026, not production.
+FastAPI service backing the ElderPay frontend: speech-to-text + intent parsing, the transaction state machine, face-based auth, and account enrollment. Storage is in-memory unless `DATABASE_URL` is set (Postgres); BMONI runs in sandbox mode — built for the NITHUB Innovation Fair Hackathon 2026, not production.
 
 ## Setup
 ```bash
@@ -36,7 +36,7 @@ python -m pytest tests/ -v
 ### Accounts
 | Route | Method | Purpose |
 |---|---|---|
-| `/api/accounts/register` | POST | Create an account (`userId`, `fullName`, `address`, `language`) — 409 if the userId already exists |
+| `/api/accounts/register` | POST | Create an account (`userId`, `fullName`, `address`, `language`, optional `email`) — 409 if the userId already exists |
 | `/api/accounts/{id}` | GET | Fetch an account profile |
 | `/api/accounts/{id}/balance` | GET | Balance lookup — falls back to the seeded demo account if `id` isn't found |
 
@@ -44,7 +44,7 @@ python -m pytest tests/ -v
 | Route | Method | Purpose |
 |---|---|---|
 | `/api/transactions/confirm` | POST | Two shapes: no `id` → evaluate a new intent into a transaction; `id` present → advance `CONFIRMATION_REQUIRED` → `FACE_VERIFICATION_REQUIRED` |
-| `/api/transactions/verify-face` | POST | Record the (simulated) face-match result for a transaction |
+| `/api/transactions/verify-face` | POST | Record the face-match result for a transaction — verifies server-side against the stored descriptor when one is supplied, falls back to a client-asserted `matched` only for accounts with no registered face |
 | `/api/transactions/send` | POST | Execute a `FACE_VERIFIED` transaction against BMONI (mock); idempotent |
 | `/api/transactions/{id}/cancel` | POST | Cancel a transaction |
 | `/api/transactions` | GET | List transactions, optional `?userId=` filter |
@@ -52,7 +52,7 @@ python -m pytest tests/ -v
 | `/api/transactions/{id}/receipt` | GET | Receipt for a `TRANSACTION_SUCCESS` transaction |
 
 ### BMONI onboarding + withdrawal (real sandbox, per BMONI's OpenAPI reference)
-BMONI identity belongs to the **POS agent/platform, not the customer** — like real agent-banking networks (OPay, Moniepoint, Paga agents), the agent is the one KYC'd business operator with a real wallet; customers only ever have a local NativePay ledger balance (`store.accounts`) and never touch BMONI's KYC/SumSub review themselves. That would reintroduce exactly the digital-onboarding friction NativePay exists to remove.
+BMONI identity belongs to the **POS agent/platform, not the customer** — like real agent-banking networks (OPay, Moniepoint, Paga agents), the agent is the one KYC'd business operator with a real wallet; customers only ever have a local ElderPay ledger balance (`store.accounts`) and never touch BMONI's KYC/SumSub review themselves. That would reintroduce exactly the digital-onboarding friction ElderPay exists to remove.
 
 Self-custodied smart-wallet flow (run once for the agent, not per customer): create user → create wallet (owner-proof challenge + EIP-191 signature) → KYC (profile PATCH + SumSub activation) → activate NGN rail → read wallet/balance/transactions → withdraw to a real Nigerian bank account (offramp proposal + EIP-712 signature). Runs in mock mode until `BMONI_API_KEY`/`BMONI_OWNER_PRIVATE_KEY` are set.
 
