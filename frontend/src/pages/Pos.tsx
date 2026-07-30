@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { getTransaction } from "../lib/api";
+import { getTransaction, getHealth, getAgentBmoniStatus } from "../lib/api";
 import DeviceFrame from "../components/DeviceFrame";
-import type { TransactionRecord } from "../types";
+import type { TransactionRecord, HealthStatus, AgentBmoniProfile } from "../types";
 
 function stateClass(state: string): "ok" | "err" | "pending" {
   if (state === "TRANSACTION_SUCCESS") return "ok";
@@ -23,10 +23,25 @@ function actionTitle(action: string): string {
   }
 }
 
+function truncateMiddle(value: string, keep = 6): string {
+  if (value.length <= keep * 2 + 3) return value;
+  return `${value.slice(0, keep)}…${value.slice(-keep)}`;
+}
+
 export default function Pos() {
   const [txId, setTxId] = useState("");
   const [tx, setTx] = useState<TransactionRecord | null>(null);
   const [notFound, setNotFound] = useState(false);
+
+  const [health, setHealth] = useState<HealthStatus | null>(null);
+  const [bmoni, setBmoni] = useState<AgentBmoniProfile | null>(null);
+  const [statusError, setStatusError] = useState(false);
+
+  useEffect(() => {
+    Promise.all([getHealth(), getAgentBmoniStatus()])
+      .then(([h, b]) => { setHealth(h); setBmoni(b); })
+      .catch(() => setStatusError(true));
+  }, []);
 
   async function lookup() {
     setNotFound(false);
@@ -52,6 +67,31 @@ export default function Pos() {
         </header>
 
         <main style={s.main}>
+          <div style={s.sectionLabel}>Agent BMONI status</div>
+          {statusError && <div style={s.hint}>Couldn't reach the backend — check it's running.</div>}
+          {!statusError && !health && <div style={s.hint}>Loading...</div>}
+          {health && (
+            <Card label="BMONI mode">
+              <span style={{ display: "inline-block", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 100, color: "#fff", background: health.bmoniMockMode ? "#C98A2C" : "#3D7A5C" }}>
+                {health.bmoniMockMode ? "Sandbox-mock" : "Live sandbox"}
+              </span>
+            </Card>
+          )}
+          {bmoni && (
+            <>
+              <Card label="Agent onboarded">{bmoni.bmoniOnboarded ? "✓ Yes" : "Not yet"}</Card>
+              {bmoni.bmoniOnboarded && (
+                <>
+                  <Card label="BMONI user ID"><span style={s.mono}>{truncateMiddle(bmoni.bmoniUserId || "—")}</span></Card>
+                  <Card label="Smart wallet ID"><span style={s.mono}>{truncateMiddle(bmoni.bmoniSmartWalletId || "—")}</span></Card>
+                  <Card label="Wallet address"><span style={s.mono}>{truncateMiddle(bmoni.bmoniWalletAddress || "—", 8)}</span></Card>
+                  <Card label="Withdrawal account linked">{bmoni.bmoniWithdrawalAccountId ? "✓ Linked" : "Not linked"}</Card>
+                </>
+              )}
+            </>
+          )}
+
+          <div style={{ ...s.sectionLabel, marginTop: 24 }}>Look up a transaction</div>
           <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
             <input
               value={txId}
@@ -102,6 +142,7 @@ const s: Record<string, React.CSSProperties> = {
   h1: { fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 21, margin: "0 0 4px" },
   sub: { margin: 0, fontSize: 12, color: "rgba(245,239,226,0.75)" },
   main: { padding: "24px 26px" },
+  sectionLabel: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#8a8175", marginBottom: 10 },
   input: { flex: 1, padding: 12, borderRadius: 10, border: "1px solid var(--line)", fontSize: 14 },
   btn: { padding: "12px 18px", borderRadius: 10, border: "none", fontWeight: 700, cursor: "pointer" },
   btnPrimary: { background: "var(--indigo)", color: "#fff" },
@@ -109,5 +150,6 @@ const s: Record<string, React.CSSProperties> = {
   cardRow: { background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 14, padding: 18, marginBottom: 14 },
   cardLabel: { fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", color: "#8a8175", marginBottom: 4 },
   cardValue: { fontSize: 16, fontWeight: 600 },
+  mono: { fontFamily: "monospace", fontSize: 13 },
   mockNote: { fontSize: "10.5px", color: "#a08a5f", background: "#fbf3e2", border: "1px dashed #d9b978", padding: "8px 12px", borderRadius: 8, marginTop: 20, textAlign: "center" }
 };

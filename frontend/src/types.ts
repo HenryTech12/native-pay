@@ -89,3 +89,17 @@ export interface Bank {
   name: string;
   code: string;
 }
+
+export interface HealthStatus {
+  ok: boolean;
+  demoMode: boolean;
+  bmoniMockMode: boolean;
+}
+
+export interface AgentBmoniProfile {
+  bmoniUserId: string | null;
+  bmoniSmartWalletId: string | null;
+  bmoniWalletAddress: string | null;
+  bmoniWithdrawalAccountId: string | null;
+  bmoniOnboarded: boolean;
+}

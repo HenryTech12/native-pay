@@ -1,5 +1,5 @@
 import type {
-  Action, AccountProfile, AccountRegisterPayload, Bank, ParsedIntent, Receipt,
+  Action, AccountProfile, AccountRegisterPayload, AgentBmoniProfile, Bank, HealthStatus, ParsedIntent, Receipt,
   TransactionRecord, VoiceAuthorizeResult, VoiceStatus
 } from "../types";
 
@@ -154,5 +154,15 @@ export async function getTransaction(id: string): Promise<TransactionRecord> {
 export async function listTransactions(userId?: string): Promise<TransactionRecord[]> {
   const url = userId ? `${API_BASE}/api/transactions?userId=${encodeURIComponent(userId)}` : `${API_BASE}/api/transactions`;
   const res = await fetch(url);
+  return asJson(res);
+}
+
+export async function getHealth(): Promise<HealthStatus> {
+  const res = await fetch(`${API_BASE}/api/health`);
+  return asJson(res);
+}
+
+export async function getAgentBmoniStatus(): Promise<AgentBmoniProfile> {
+  const res = await fetch(`${API_BASE}/api/agent/bmoni-status`);
   return asJson(res);
 }
