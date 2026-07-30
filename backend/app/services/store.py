@@ -115,6 +115,17 @@ def get_account_by_card(card_number: str) -> Optional[Account]:
     return accounts.get(user_id) if user_id else None
 
 
+def find_accounts_by_name(name: str) -> list[Account]:
+    """Fallback lookup for customers who can't recall their card number —
+    common among elderly users. Case-insensitive substring match against
+    the name given at registration; may return multiple matches if
+    several customers share a similar name."""
+    query = name.strip().lower()
+    if not query:
+        return []
+    return [a for a in accounts.values() if query in a.name.lower()]
+
+
 def find_recipient_by_account(account_number: str) -> Optional[tuple[str, Recipient]]:
     normalized = account_number.replace(" ", "").replace("-", "")
     for key, recipient in recipients.items():

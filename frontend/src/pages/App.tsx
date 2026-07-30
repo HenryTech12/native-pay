@@ -4,7 +4,7 @@ import {
   voiceProcess, confirmCreate, confirmAdvance, cancelTransaction,
   verifyFace, sendTransaction, getReceipt, getBalance,
   authorizeVoice, getVoiceStatus, getAccount, getAccountByCard,
-  resolveRecipientByAccount, getBanks
+  resolveRecipientByAccount, getBanks, searchAccountsByName
 } from "../lib/api";
 import { recordAudio, blobToMfccVector } from "../lib/audio";
 import { generateChallenge } from "../lib/challenge";
@@ -15,7 +15,7 @@ import { useIsSpeaking } from "../lib/useIsSpeaking";
 import type { TransactionRecord, Receipt, Action, Bank } from "../types";
 
 type Step =
-  | "card" | "start" | "auth" | "faceAuth" | "authFailed"
+  | "card" | "start" | "nameLookup" | "auth" | "faceAuth" | "authFailed"
   | "listen" | "confirm" | "clarify" | "error" | "face" | "processing" | "balance" | "receipt";
 
 function formatCardNumber(raw: string): string {
@@ -94,6 +94,11 @@ export default function App() {
   const [banks, setBanks] = useState<Bank[]>([]);
   const [accountNumberError, setAccountNumberError] = useState("");
 
+  const [nameQuery, setNameQuery] = useState("");
+  const [nameMatches, setNameMatches] = useState<{ id: string; name: string }[] | null>(null);
+  const [nameLookupError, setNameLookupError] = useState("");
+  const [nameLookupBusy, setNameLookupBusy] = useState(false);
+
   const recorderRef = useRef<{ stop: () => void; result: Promise<Blob> } | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const voiceVectorRef = useRef<number[] | null>(null);
@@ -148,16 +153,71 @@ export default function App() {
     await new Promise((resolve) => setTimeout(resolve, 550)); // let the card-insert animation play out
     try {
       const account = await getAccountByCard(cardNumber);
-      const idx = LANGUAGES.findIndex((l) => l.code === account.preferredLanguage);
-      const lang = idx >= 0 ? account.preferredLanguage : LANGUAGES[langIdx].code;
-      setUserId(account.id);
-      if (idx >= 0) setLangIdx(idx);
-      await startSession(account.id, lang);
+      await proceedWithAccount(account.id, account.preferredLanguage);
     } catch {
       setCardError("Card not recognized. Check the number, or enter your phone number manually.");
     } finally {
       setInserting(false);
     }
+  }
+
+  /** Shared by every way into the app (card, phone number, name lookup) —
+   * resolves the account's saved language and starts the session. */
+  async function proceedWithAccount(accountId: string, preferredLanguage: string) {
+    const idx = LANGUAGES.findIndex((l) => l.code === preferredLanguage);
+    const lang = idx >= 0 ? preferredLanguage : LANGUAGES[langIdx].code;
+    setUserId(accountId);
+    if (idx >= 0) setLangIdx(idx);
+    await startSession(accountId, lang);
+  }
+
+  async function onSubmitNameLookup() {
+    setNameLookupError("");
+    setNameLookupBusy(true);
+    try {
+      const matches = await searchAccountsByName(nameQuery);
+      if (matches.length === 0) {
+        setNameMatches(null);
+        setNameLookupError("No account found with that name. Check the spelling, or ask the agent for help.");
+      } else if (matches.length === 1) {
+        const account = await getAccount(matches[0].id);
+        await proceedWithAccount(account.id, account.preferredLanguage);
+      } else {
+        setNameMatches(matches);
+      }
+    } catch {
+      setNameLookupError("Couldn't reach the backend — check it's running.");
+    } finally {
+      setNameLookupBusy(false);
+    }
+  }
+
+  async function onSelectNameMatch(id: string) {
+    setNameLookupBusy(true);
+    try {
+      const account = await getAccount(id);
+      await proceedWithAccount(account.id, account.preferredLanguage);
+    } catch {
+      setNameLookupError("Couldn't reach the backend — check it's running.");
+    } finally {
+      setNameLookupBusy(false);
+    }
+  }
+
+  async function captureNameByVoice() {
+    if (isRecording) { recorderRef.current?.stop(); return; }
+    setIsRecording(true);
+    const rec = await recordAudio();
+    recorderRef.current = rec;
+    rec.result.then(async (blob) => {
+      setIsRecording(false);
+      try {
+        const { text } = await voiceProcess(blob, LANGUAGES[langIdx].code);
+        setNameQuery(text);
+      } catch {
+        setNameLookupError("Couldn't hear that clearly — try typing your name instead.");
+      }
+    });
   }
 
   function onKeypadPress(key: string) {
@@ -371,6 +431,7 @@ export default function App() {
   const titles: Record<Step, [string, string]> = {
     card: ["NativePay", "Insert your card to begin."],
     start: ["NativePay", "Enter your phone number and pick your language to begin."],
+    nameLookup: ["Find your account", "No card number? We can look you up by name instead."],
     auth: ["Verify it's you", "Repeat the numbers you hear."],
     faceAuth: ["One more check", "A quick face check confirms it's you."],
     authFailed: ["Couldn't verify you", "Please speak with the agent for help."],
@@ -427,12 +488,37 @@ export default function App() {
                 <span style={s.quickBtn} onClick={() => setCardNumber("5060 0000 0000 0001")}>Use demo card (Olawale Zainab)</span>
               </div>
               <div style={s.hint}>No card? <span style={s.linkText} onClick={() => setStep("start")}>Enter phone number manually</span></div>
+              <div style={s.hint}>Forgot your card number? <span style={s.linkText} onClick={() => setStep("nameLookup")}>Find your account by name</span></div>
+            </div>
+          )}
+
+          {step === "nameLookup" && (
+            <div style={s.micStage}>
+              <div style={s.hint}>Say or type the name you registered with.</div>
+              <input
+                style={s.input}
+                value={nameQuery}
+                onChange={(e) => setNameQuery(e.target.value)}
+                placeholder="Full name"
+              />
+              <button style={{ ...s.micBtn, ...(isRecording ? s.micBtnRecording : {}) }} onClick={captureNameByVoice}>🎤</button>
+              {nameLookupError && <div style={s.cardErrorText}>{nameLookupError}</div>}
+              {nameMatches && nameMatches.length > 1 && (
+                <div style={{ width: "100%" }}>
+                  <div style={s.hint}>More than one match — which one is you?</div>
+                  {nameMatches.map((m) => (
+                    <button key={m.id} style={{ ...s.btn, ...s.btnGhost, width: "100%", marginBottom: 8 }} onClick={() => onSelectNameMatch(m.id)} disabled={nameLookupBusy}>{m.name}</button>
+                  ))}
+                </div>
+              )}
+              <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} disabled={!nameQuery.trim() || nameLookupBusy} onClick={onSubmitNameLookup}>{nameLookupBusy ? "Looking..." : "Find my account"}</button>
+              <div style={s.hint}><span style={s.linkText} onClick={() => setStep("card")}>Back to card entry</span></div>
             </div>
           )}
 
           {step === "start" && (
             <>
-              <label style={s.label}>Phone number or name</label>
+              <label style={s.label}>Phone number</label>
               <input style={s.input} value={userId} onChange={(e) => setUserId(e.target.value)} />
               <div style={s.langRow}>
                 {LANGUAGES.map((l, i) => (
