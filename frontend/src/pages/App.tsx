@@ -92,6 +92,7 @@ export default function App() {
   const [bankCode, setBankCode] = useState("");
   const [banks, setBanks] = useState<Bank[]>([]);
   const [accountNumberError, setAccountNumberError] = useState("");
+  const [accountNumberBusy, setAccountNumberBusy] = useState(false);
 
   const [nameQuery, setNameQuery] = useState("");
   const [nameMatches, setNameMatches] = useState<{ id: string; name: string }[] | null>(null);
@@ -222,7 +223,13 @@ export default function App() {
   async function onSubmitAccountNumber() {
     if (!tx) return;
     setAccountNumberError("");
-    const resolved = await resolveRecipientByAccount(tx.id, accountNumberInput, bankCode);
+    setAccountNumberBusy(true);
+    let resolved: TransactionRecord;
+    try {
+      resolved = await resolveRecipientByAccount(tx.id, accountNumberInput, bankCode);
+    } finally {
+      setAccountNumberBusy(false);
+    }
     setTx(resolved);
 
     if (resolved.state === "CONFIRMATION_REQUIRED") {
@@ -579,6 +586,10 @@ export default function App() {
                 </div>
                 <div style={s.badgeRow}><span style={{ ...s.badge, ...s.badgeGold }}>Confidence {Math.round((tx.confidence || 0) * 100)}%</span></div>
               </div>
+              <span
+                style={s.linkText}
+                onClick={() => speak(confirmPhraseFor(LANGUAGES[langIdx].code, tx.action, tx.amount, tx.recipient), LANGUAGES[langIdx].code)}
+              >🔊 Repeat prompt</span>
               <div style={s.actionRow}>
                 <button style={{ ...s.btn, ...s.btnGhost }} onClick={onCancel}>No, cancel</button>
                 <button style={{ ...s.btn, ...s.btnPrimary }} onClick={onConfirm}>Yes, continue</button>
@@ -589,9 +600,9 @@ export default function App() {
           {step === "clarify" && tx?.needsClarification === "accountNumber" && (
             <div style={s.micStage}>
               <div style={{ ...s.to, fontSize: 15, color: "var(--indigo)", fontWeight: 600, textAlign: "center" }}>
-                I don't recognize that name. What's their bank and account number?
+                I don't recognize that name. Agent: ask the customer for the recipient's bank and account number, and enter it below.
               </div>
-              <select style={s.input} value={bankCode} onChange={(e) => setBankCode(e.target.value)}>
+              <select style={s.input} value={bankCode} onChange={(e) => setBankCode(e.target.value)} disabled={accountNumberBusy}>
                 <option value="">{banks.length ? "Select bank" : "Loading banks..."}</option>
                 {banks.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
               </select>
@@ -601,9 +612,10 @@ export default function App() {
                 onChange={(e) => setAccountNumberInput(e.target.value.replace(/\D/g, "").slice(0, 10))}
                 placeholder="Account number"
                 inputMode="numeric"
+                disabled={accountNumberBusy}
               />
               {accountNumberError && <div style={s.cardErrorText}>{accountNumberError}</div>}
-              <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} disabled={accountNumberInput.length < 10 || !bankCode} onClick={onSubmitAccountNumber}>Look up</button>
+              <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} disabled={accountNumberInput.length < 10 || !bankCode || accountNumberBusy} onClick={onSubmitAccountNumber}>{accountNumberBusy ? "Looking up..." : "Look up"}</button>
             </div>
           )}
 

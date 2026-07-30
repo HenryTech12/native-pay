@@ -478,7 +478,7 @@ class AccountRegisterBody(BaseModel):
     userId: str
     fullName: str
     address: str
-    email: str
+    email: Optional[str] = None
     language: str
 
 
@@ -486,7 +486,7 @@ class AccountRegisterBody(BaseModel):
 def accounts_register(body: AccountRegisterBody):
     if store.get_account(body.userId):
         raise HTTPException(status_code=409, detail={"error": "ACCOUNT_EXISTS"})
-    account = store.create_account(body.userId, body.fullName, body.language, body.address, body.email)
+    account = store.create_account(body.userId, body.fullName, body.language, body.address, body.email or None)
     return account
 
 

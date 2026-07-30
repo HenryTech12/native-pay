@@ -144,10 +144,10 @@ export default function Onboarding() {
 
           {step === "email" && (
             <>
-              <div style={s.hint}>{phrase(lang, "askEmail")}</div>
-              <label style={s.label}>Email address</label>
+              <div style={s.hint}>{phrase(lang, "askEmail")} (optional — many customers won't have one)</div>
+              <label style={s.label}>Email address (optional)</label>
               <input style={s.input} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="e.g. ngozi@example.com" autoFocus />
-              <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} disabled={!email.trim()} onClick={() => setStep("address")}>Continue</button>
+              <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} onClick={() => setStep("address")}>{email.trim() ? "Continue" : "Skip — no email"}</button>
             </>
           )}
 
@@ -175,7 +175,7 @@ export default function Onboarding() {
                 <Row label="Language" value={LANGUAGES[langIdx].label} />
                 <Row label="Phone number" value={userId} />
                 <Row label="Name" value={fullName} />
-                <Row label="Email" value={email} />
+                <Row label="Email" value={email.trim() || "Not provided"} />
                 <Row label="Address" value={address} />
                 <Row label="Face" value={faceDescriptor ? "Captured ✓" : "Not captured"} />
               </div>
