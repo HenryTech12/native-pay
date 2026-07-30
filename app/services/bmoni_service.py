@@ -85,6 +85,16 @@ def _owner_account() -> Account:
     return Account.from_key(OWNER_PRIVATE_KEY)
 
 
+def get_owner_address() -> dict:
+    """Public address only, safe to expose — lets us confirm the owner key
+    currently configured on this deployment is the same one a given
+    wallet was actually created with, without ever revealing the private
+    key itself."""
+    if not OWNER_PRIVATE_KEY:
+        return {"configured": False, "ownerAddress": None}
+    return {"configured": True, "ownerAddress": _owner_account().address}
+
+
 async def list_users(page: int = 1, limit: int = 100) -> dict:
     if MOCK_MODE:
         await asyncio.sleep(0.1)
