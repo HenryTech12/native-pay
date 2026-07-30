@@ -96,12 +96,12 @@ export default function Onboarding() {
   }
 
   const titles: Record<Step, [string, string]> = {
-    start: ["Create your account", "Pick your language and a phone number to sign in with."],
+    start: ["Onboard a customer", "Pick their language and a phone number to sign in with."],
     name: ["Customer's name", "Agent: enter the customer's full name — this becomes their account name."],
     email: ["Customer's email", "Agent: enter the customer's email address."],
     address: ["Customer's address", "Agent: enter the customer's home address."],
     face: ["Face verification", "Look at the camera so we can recognize you at transaction time."],
-    review: ["Review", "Check the details before we create your account."],
+    review: ["Review", "Check the details before we onboard them."],
     done: ["You're in", "Head to the virtual POS to start using NativePay."]
   };
   const [title, sub] = titles[step];
@@ -181,7 +181,7 @@ export default function Onboarding() {
               </div>
               <div style={s.mockNote}>Your face was captured just now as a numeric descriptor (not a photo) — this is what confirms it's you as the final check before a withdrawal or transfer goes through.</div>
               {submitError && <div style={s.errorCard}>{submitError}</div>}
-              <button style={{ ...s.btn, ...s.btnPrimary, width: "100%", marginTop: 14 }} onClick={submit}>{status || "Create account"}</button>
+              <button style={{ ...s.btn, ...s.btnPrimary, width: "100%", marginTop: 14 }} onClick={submit}>{status || "Onboard customer"}</button>
             </>
           )}
 
