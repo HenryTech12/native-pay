@@ -158,6 +158,7 @@ export default function Landing() {
           <div style={styles.heroCtas}>
             <Link to="/app" style={styles.btnPrimary}>Start speaking →</Link>
             <a href="#problem" style={styles.btnSecondary}>Why we built this</a>
+            <a href="https://drive.google.com/file/d/1xGWe3um5fwWpAl-kErVQiFWtqs-FL1He/view?usp=drivesdk" target="_blank" rel="noopener noreferrer" style={styles.btnSecondary}>▶ Watch demo video</a>
           </div>
         </div>
         <div style={styles.heroDemo}>
