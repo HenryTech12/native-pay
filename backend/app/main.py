@@ -15,7 +15,7 @@ from app.services.transaction_service import STATES
 
 logger = logging.getLogger("nativepay")
 
-app = FastAPI(title="NativePay API")
+app = FastAPI(title="ElderPay API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -240,7 +240,7 @@ def transactions_receipt(tx_id: str):
 
 # These /api/bmoni/users/{user_id}/* routes are granular testing utilities
 # over the raw BMONI API — the user_id you pass is the BMONI-side
-# bmoniUserId, not a NativePay customer id. In this app that identity
+# bmoniUserId, not an ElderPay customer id. In this app that identity
 # always belongs to the POS agent/platform (see AgentBmoniProfile),
 # never to an individual customer. Prefer /api/agent/bmoni-onboard below
 # for the actual one-time setup; these stay for testing individual steps.

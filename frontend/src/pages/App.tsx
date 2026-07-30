@@ -408,7 +408,7 @@ export default function App() {
 
   function downloadReceipt() {
     if (!receipt) return;
-    const text = `NativePay Receipt\n------------------\nTransaction ID: ${receipt.transactionId}\nType: ${receipt.type}\nAmount: NGN ${receipt.amount}\nRecipient: ${receipt.recipient || "-"}\nReference: ${receipt.reference}\nDate: ${receipt.date}\nEnvironment: ${receipt.environment}\n`;
+    const text = `ElderPay Receipt\n------------------\nTransaction ID: ${receipt.transactionId}\nType: ${receipt.type}\nAmount: NGN ${receipt.amount}\nRecipient: ${receipt.recipient || "-"}\nReference: ${receipt.reference}\nDate: ${receipt.date}\nEnvironment: ${receipt.environment}\n`;
     const blob = new Blob([text], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -417,10 +417,10 @@ export default function App() {
   }
 
   const titles: Record<Step, [string, string]> = {
-    card: ["NativePay", "Plug in the customer's card, then look them up by name or phone number."],
+    card: ["ElderPay", "Plug in the customer's card, then look them up by name or phone number."],
     faceAuth: ["Verify it's you", "A quick face check confirms it's you."],
     authFailed: ["Couldn't verify you", "Please speak with the agent for help."],
-    listen: ["NativePay", "Tap and speak — or try a quick demo phrase."],
+    listen: ["ElderPay", "Tap and speak — or try a quick demo phrase."],
     confirm: ["Confirm", "Check the details before continuing."],
     clarify: ["One more thing", "I need a bit more detail."],
     error: ["Let's try that again", ""],
@@ -437,7 +437,7 @@ export default function App() {
       <div style={s.appCard}>
         <header style={s.header}>
           <div style={s.topRow}>
-            <Link to="/" style={s.backLink}>← NativePay</Link>
+            <Link to="/" style={s.backLink}>← ElderPay</Link>
             <span style={s.demoBadge}>Hackathon Prototype</span>
           </div>
           <h1 style={s.h1}>{title}</h1>

@@ -102,7 +102,7 @@ export default function Onboarding() {
     address: ["Customer's address", "Agent: enter the customer's home address."],
     face: ["Face verification", "Look at the camera so we can recognize you at transaction time."],
     review: ["Review", "Check the details before we onboard them."],
-    done: ["You're in", "Head to the virtual POS to start using NativePay."]
+    done: ["You're in", "Head to the virtual POS to start using ElderPay."]
   };
   const [title, sub] = titles[step];
 
@@ -111,7 +111,7 @@ export default function Onboarding() {
       <div style={s.card}>
         <header style={s.header}>
           <div style={s.topRow}>
-            <Link to="/" style={s.backLink}>← NativePay</Link>
+            <Link to="/" style={s.backLink}>← ElderPay</Link>
           </div>
           <h1 style={s.h1}>{title}</h1>
           <p style={s.sub}>{sub}</p>

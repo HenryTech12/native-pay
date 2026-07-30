@@ -13,7 +13,7 @@ export default function DeviceFrame({ children, showReceiptPrint, cardSlotActive
       <div style={s.deviceChassis}>
         <div style={s.deviceTopRow}>
           <div style={{ ...s.cardSlot, ...(cardSlotActive ? s.cardSlotActive : {}) }} title="Card slot" />
-          <div style={s.brandPlaque}>NativePay <span style={s.modelTag}>NP-100</span></div>
+          <div style={s.brandPlaque}>ElderPay <span style={s.modelTag}>EP-100</span></div>
           <div style={s.statusIcons}>●●●</div>
         </div>
         <div style={s.printerSlot}>

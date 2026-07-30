@@ -35,7 +35,7 @@ export default function History() {
         </header>
 
         <main style={s.main}>
-          {error && <div style={s.hint}>Couldn't reach the NativePay backend. Check it's running.</div>}
+          {error && <div style={s.hint}>Couldn't reach the ElderPay backend. Check it's running.</div>}
           {!error && txs === null && <div style={s.hint}>Loading...</div>}
           {txs && txs.length === 0 && <div style={s.hint}>No transactions yet — try the demo.</div>}
 

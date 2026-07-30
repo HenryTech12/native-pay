@@ -51,16 +51,16 @@ const styles: Record<string, React.CSSProperties> = {
 
 const features = [
   { num: "01", title: "Speak", body: "Say what you want in your own language. Groq's speech AI transcribes it in under a second." },
-  { num: "02", title: "Confirm", body: "NativePay reads the transaction back to you out loud before anything moves." },
+  { num: "02", title: "Confirm", body: "ElderPay reads the transaction back to you out loud before anything moves." },
   { num: "03", title: "Verify", body: "A quick face check replaces PINs and passwords — nothing to remember, nothing to forget." },
-  { num: "04", title: "Done", body: "BMONI processes the transfer and NativePay confirms it out loud, with a digital receipt." }
+  { num: "04", title: "Done", body: "BMONI processes the transfer and ElderPay confirms it out loud, with a digital receipt." }
 ];
 
 export default function Landing() {
   return (
     <div>
       <nav style={styles.nav}>
-        <div style={styles.logo}>NativePay</div>
+        <div style={styles.logo}>ElderPay</div>
         <div style={styles.navLinks}>
           <Link to="/pos" style={styles.posLink}>POS agent view</Link>
           <Link to="/onboarding" style={styles.posLink}>Onboard a customer</Link>
@@ -72,7 +72,7 @@ export default function Landing() {
         <div style={styles.heroText}>
           <div style={styles.eyebrow}>NITHUB Innovation Fair 2026 · AI + BMONI</div>
           <h1 style={styles.h1}>Banking that speaks <span style={styles.em}>your</span> language.</h1>
-          <p style={styles.lede}>No apps to learn. No PINs to forget. Walk up to any participating POS agent, speak naturally in Yorùbá, Hausa, Igbo, or Pidgin, and NativePay handles the rest — securely, through BMONI.</p>
+          <p style={styles.lede}>No apps to learn. No PINs to forget. Walk up to any participating POS agent, speak naturally in Yorùbá, Hausa, Igbo, or Pidgin, and ElderPay handles the rest — securely, through BMONI.</p>
           <div style={styles.heroCtas}>
             <Link to="/app" style={styles.btnPrimary}>Start speaking</Link>
             <a href="#problem" style={styles.btnSecondary}>Why we built this</a>
@@ -156,7 +156,7 @@ export default function Landing() {
         </div>
       </div>
 
-      <footer style={styles.footer}>NativePay — built for NITHUB Innovation Fair Hackathon 2026. Sandbox / test data only.</footer>
+      <footer style={styles.footer}>ElderPay — built for NITHUB Innovation Fair Hackathon 2026. Sandbox / test data only.</footer>
     </div>
   );
 }

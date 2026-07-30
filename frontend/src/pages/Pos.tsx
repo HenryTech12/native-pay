@@ -60,7 +60,7 @@ export default function Pos() {
       <div style={s.card}>
         <header style={s.header}>
           <div style={s.topRow}>
-            <Link to="/" style={s.backLink}>← NativePay</Link>
+            <Link to="/" style={s.backLink}>← ElderPay</Link>
           </div>
           <h1 style={s.h1}>POS Agent View</h1>
           <p style={s.sub}>Track a customer's transaction status here. The agent never sees the customer's transcript, biometric data, or account credentials — only status.</p>
@@ -103,7 +103,7 @@ export default function Pos() {
             <input
               value={txId}
               onChange={(e) => setTxId(e.target.value)}
-              placeholder="Transaction ID (e.g. NP-2026-123456)"
+              placeholder="Transaction ID (e.g. EP-2026-123456)"
               style={s.input}
             />
             <button onClick={lookup} style={{ ...s.btn, ...s.btnPrimary }}>Look up</button>
