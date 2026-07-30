@@ -33,12 +33,11 @@ Narrate this as *her* interaction, not a generic feature tour — "she inserts h
 
 ## 2:00–2:35 — Technical credibility (screen recording, ~35 seconds)
 
-*(Cut to Swagger UI or a terminal, briefly)*
+*(Navigate to `/pos` — the POS Agent View — right within the app, no need to cut away to Swagger)*
 
-> "This isn't a mockup. Every piece talks to a real service."
+> "This isn't a mockup. Every piece talks to a real service — and you don't have to take my word for it, it's right here in the product."
 
-- Flash `GET /api/health` showing `bmoniMockMode: false`.
-- Flash `GET /api/agent/bmoni-status` showing a real `bmoniUserId`, `bmoniSmartWalletId`, and `bmoniOnboarded: true` — say: *"This is a real BMONI sandbox wallet — created, KYC'd, and NGN-rail-activated against their live sandbox, not simulated."*
+- Point at the "Agent BMONI status" panel: mode badge ("Live sandbox," not mock), "Agent onboarded: Yes," and the real (truncated) `bmoniUserId` / smart wallet ID / wallet address — say: *"This is a real BMONI sandbox wallet — created, KYC'd, and NGN-rail-activated against their live sandbox, not simulated."*
 - One line on the AI stack: *"Speech-to-text and intent parsing run on Groq's Whisper and LLM models; the voice she just heard is YarnGPT's Nigerian-accented text-to-speech — both real, both live."*
 
 ## 2:35–2:55 — Honesty + impact close (presenter to camera)
