@@ -9,7 +9,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from app.services import bmoni_service, groq_service, paystack_service, store, transaction_service, voice_auth, yarngpt_service
+from app.services import bmoni_service, face_auth, groq_service, paystack_service, store, transaction_service, voice_auth, yarngpt_service
 from app.services.languages import supported_languages
 from app.services.transaction_service import STATES
 
@@ -131,7 +131,8 @@ def transactions_cancel(tx_id: str):
 
 class VerifyFaceBody(BaseModel):
     id: str
-    matched: bool = False
+    faceDescriptor: Optional[list[float]] = None
+    matched: bool = False  # fallback only for accounts with no registered face descriptor
 
 
 @app.get("/api/banks")
@@ -170,10 +171,20 @@ async def transactions_resolve_recipient(body: ResolveRecipientBody):
 
 @app.post("/api/transactions/verify-face")
 def transactions_verify_face(body: VerifyFaceBody):
-    result = transaction_service.record_face_verification(body.id, body.matched)
-    if not result:
+    """Verifies server-side whenever a real face descriptor is supplied
+    (the account has one on file) -- never trusts a client-asserted
+    match for that case. Falls back to the client-asserted `matched`
+    only for accounts with no registered face (e.g. legacy/demo
+    accounts predating this feature), same graceful-degradation pattern
+    used for voice."""
+    existing = store.get_transaction(body.id)
+    if not existing:
         raise HTTPException(status_code=404, detail={"error": "TRANSACTION_NOT_FOUND"})
-    return result
+    matched = body.matched
+    if body.faceDescriptor:
+        result = face_auth.authorize_by_face(existing.userId, body.faceDescriptor)
+        matched = result["authorized"]
+    return transaction_service.record_face_verification(body.id, matched)
 
 
 class SendBody(BaseModel):
@@ -523,3 +534,23 @@ def voice_authorize(body: VoiceprintBody):
 @app.get("/api/voice/status/{user_id}")
 def voice_status(user_id: str):
     return {"registered": voice_auth.has_voiceprint(user_id)}
+
+
+class FaceDescriptorBody(BaseModel):
+    userId: str
+    descriptor: list[float]
+
+
+@app.post("/api/face/register")
+def face_register(body: FaceDescriptorBody):
+    return face_auth.register_face(body.userId, body.descriptor)
+
+
+@app.post("/api/face/authorize")
+def face_authorize(body: FaceDescriptorBody):
+    return face_auth.authorize_by_face(body.userId, body.descriptor)
+
+
+@app.get("/api/face/status/{user_id}")
+def face_status(user_id: str):
+    return {"registered": face_auth.has_face(user_id)}
