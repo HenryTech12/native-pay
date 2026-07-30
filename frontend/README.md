@@ -1,6 +1,6 @@
-# NativePay Frontend
+# ElderPay Frontend
 
-React + TypeScript + Vite client for NativePay — the voice UI, the enrollment wizard, the virtual POS, and the agent status view.
+React + TypeScript + Vite client for ElderPay — the voice UI, the onboarding wizard, the virtual POS, and the agent status view.
 
 ## Setup
 ```bash
@@ -8,7 +8,7 @@ npm install
 cp .env.example .env   # VITE_API_BASE=http://localhost:4000
 npm run dev
 ```
-Requires the backend running (see `../backend/README.md`) — most pages call it directly and don't work standalone. Browser microphone/camera permissions are required for voice and face steps.
+Requires the backend running (see `../backend/README.md`) — most pages call it directly and don't work standalone. Browser microphone/camera permissions are required for voice input and face verification.
 
 ## Scripts
 - `npm run dev` — dev server
@@ -20,9 +20,9 @@ Requires the backend running (see `../backend/README.md`) — most pages call it
 | Path | Page | Purpose |
 |---|---|---|
 | `/` | `Landing.tsx` | Marketing/pitch page |
-| `/onboarding` | `Onboarding.tsx` | Sign-up wizard: language → name → address → voiceprint → review |
-| `/app` | `App.tsx` | The virtual POS: session login (voice/face) → speak a request → confirm → face verify → receipt |
-| `/pos` | `Pos.tsx` | Read-only agent view — transaction status lookup by ID, no customer data |
+| `/onboarding` | `Onboarding.tsx` | Onboarding wizard: language → name → email (optional) → address → face capture → review |
+| `/app` | `App.tsx` | The virtual POS: look up by name/phone → face verify → speak a request → confirm → face verify → receipt |
+| `/pos` | `Pos.tsx` | Read-only agent view — BMONI/storage status, transaction status lookup by ID, no customer data |
 | `/history` | `History.tsx` | Transaction history for the demo account |
 
 ## Structure
@@ -30,8 +30,9 @@ Requires the backend running (see `../backend/README.md`) — most pages call it
 src/
   lib/
     api.ts          Every backend call, one function per route
-    audio.ts        getUserMedia recording + Meyda MFCC feature extraction
-    challenge.ts     Random-digit spoken challenge generator (anti-replay, client-side)
+    audio.ts        getUserMedia recording + Meyda MFCC feature extraction (spoken commands, and the unused voice-auth path)
+    faceAuth.ts      face-api.js model loading + client-side face descriptor capture
+    challenge.ts     Random-digit spoken challenge generator — unused by the active flow, kept for the parked voice-auth path
     phrases.ts       Per-language spoken/display strings + speechSynthesis wrapper
   pages/
     Landing.tsx, Onboarding.tsx, App.tsx, Pos.tsx, History.tsx
@@ -40,13 +41,13 @@ src/
 
 ## Key flows
 
-**Enrollment** (`Onboarding.tsx`): pick a language, speak full name and address (transcribed via `/api/voice/process`), record two voice samples prompted by a random-digit challenge (`generateChallenge`), average their MFCC vectors, then `POST /api/accounts/register` + `POST /api/voice/register`.
+**Onboarding** (`Onboarding.tsx`): pick a language, the agent types the customer's full name, address, and optional email as they say them, then captures a real face descriptor via the device camera, before `POST /api/accounts/register` + `POST /api/face/register`.
 
-**Session auth** (`App.tsx`, `start`/`auth`/`faceAuth`/`authFailed` steps): enter a phone number; if a voiceprint exists, a fresh random-digit challenge is spoken and recorded, checked via `POST /api/voice/authorize`. A confident match skips straight into the app; a low-confidence match or no enrollment at all steps up to a simulated face check.
+**Session auth** (`App.tsx`, `card`/`faceAuth`/`authFailed` steps): agent enters the customer's name or phone number (no card number needed once onboarded), then a real face check gates entry — client-captured descriptor, `POST /api/face/authorize`. Accounts with no registered face (the two seeded demo accounts) fall back to a disclosed simulated match instead.
 
-**Transaction** (`listen`/`confirm`/`face`/`processing`/`receipt` steps): speak or pick a quick-demo intent, confirm the read-back amount/recipient, pass a (simulated) face check, then the backend executes against BMONI (mock) and a receipt is shown.
+**Transaction** (`listen`/`confirm`/`clarify`/`face`/`processing`/`receipt` steps): speak or pick a quick-demo intent; if the recipient isn't recognized, the agent looks them up by bank + account number and the resolved name is read back (with a repeat button) for the customer to confirm; a real face check gates the transaction before the backend executes against BMONI (mock or live sandbox) and a receipt is shown.
 
 ## Honest limitations
-- Face match is simulated (tap "match"/"no match") — flagged on-screen wherever it appears, not hidden.
-- Voice auth (`authorizeVoice`) is a cosine-similarity pre-check on the backend, not verified speaker biometrics; the random digit challenge (`challenge.ts`) is a client-side UX device against replay — the backend does not check that the spoken content matches the digits.
+- Face verification is real for any account with a registered descriptor; only the two seeded legacy demo accounts fall back to a disclosed simulated match, shown clearly on-screen.
+- `voice_auth`-related client code (`authorizeVoice`, `registerVoice`, `challenge.ts`) still exists and works against the backend, but nothing in the active UI calls it — voice authentication is parked for a later phase, not deleted.
 - Yorùbá/Hausa/Igbo/Pidgin strings in `phrases.ts` are best-effort translations, not reviewed by native speakers.

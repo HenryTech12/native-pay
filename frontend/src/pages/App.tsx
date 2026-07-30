@@ -3,11 +3,12 @@ import { Link } from "react-router-dom";
 import {
   voiceProcess, confirmCreate, confirmAdvance, cancelTransaction,
   verifyFace, sendTransaction, getReceipt, getBalance,
-  authorizeVoice, getVoiceStatus, getAccount, getAccountByCard,
-  resolveRecipientByAccount, getBanks, searchAccountsByName
+  getAccount,
+  resolveRecipientByAccount, getBanks, searchAccountsByName,
+  authorizeFace, getFaceStatus
 } from "../lib/api";
-import { recordAudio, blobToMfccVector } from "../lib/audio";
-import { generateChallenge } from "../lib/challenge";
+import { recordAudio } from "../lib/audio";
+import { captureFaceDescriptor, loadFaceModels } from "../lib/faceAuth";
 import { phrase, speak, LANGUAGES } from "../lib/phrases";
 import DeviceFrame from "../components/DeviceFrame";
 import SpeakingIndicator from "../components/SpeakingIndicator";
@@ -15,12 +16,12 @@ import { useIsSpeaking } from "../lib/useIsSpeaking";
 import type { TransactionRecord, Receipt, Action, Bank } from "../types";
 
 type Step =
-  | "card" | "start" | "nameLookup" | "auth" | "faceAuth" | "authFailed"
+  | "card" | "faceAuth" | "authFailed"
   | "listen" | "confirm" | "clarify" | "error" | "face" | "processing" | "balance" | "receipt";
 
-function formatCardNumber(raw: string): string {
-  const digits = raw.replace(/\D/g, "").slice(0, 16);
-  return digits.replace(/(.{4})/g, "$1 ").trim();
+function looksLikePhoneNumber(query: string): boolean {
+  const digitsOnly = query.replace(/[\s-]/g, "");
+  return /^\d{6,}$/.test(digitsOnly);
 }
 
 function actionTitle(action: Action): string {
@@ -84,24 +85,22 @@ export default function App() {
   const [balance, setBalance] = useState<number | null>(null);
   const [errorCode, setErrorCode] = useState<string>("default");
 
-  const [cardNumber, setCardNumber] = useState("");
-  const [cardError, setCardError] = useState("");
   const [inserting, setInserting] = useState(false);
-  const [challenge, setChallenge] = useState<{ digits: string; spoken: string } | null>(null);
-  const [authStatus, setAuthStatus] = useState("");
   const [accountNumberInput, setAccountNumberInput] = useState("");
   const [bankCode, setBankCode] = useState("");
   const [banks, setBanks] = useState<Bank[]>([]);
   const [accountNumberError, setAccountNumberError] = useState("");
+  const [accountNumberBusy, setAccountNumberBusy] = useState(false);
 
-  const [nameQuery, setNameQuery] = useState("");
+  const [loginQuery, setLoginQuery] = useState("");
+  const [loginError, setLoginError] = useState("");
   const [nameMatches, setNameMatches] = useState<{ id: string; name: string }[] | null>(null);
-  const [nameLookupError, setNameLookupError] = useState("");
-  const [nameLookupBusy, setNameLookupBusy] = useState(false);
+
+  const [faceRegistered, setFaceRegistered] = useState(false);
+  const [faceStatus, setFaceStatus] = useState("");
 
   const recorderRef = useRef<{ stop: () => void; result: Promise<Blob> } | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const voiceVectorRef = useRef<number[] | null>(null);
 
   useEffect(() => {
     if (step === "clarify" && tx?.needsClarification === "accountNumber" && banks.length === 0) {
@@ -110,10 +109,15 @@ export default function App() {
   }, [step, tx?.needsClarification]);
 
   useEffect(() => {
-    if ((step === "face" || step === "faceAuth") && videoRef.current) {
-      navigator.mediaDevices.getUserMedia({ video: true })
-        .then((stream) => { if (videoRef.current) videoRef.current.srcObject = stream; })
-        .catch(() => {});
+    if (step === "face" || step === "faceAuth") {
+      setFaceStatus("");
+      loadFaceModels().catch(() => {});
+      getFaceStatus(userId).then((s) => setFaceRegistered(s.registered)).catch(() => setFaceRegistered(false));
+      if (videoRef.current) {
+        navigator.mediaDevices.getUserMedia({ video: true })
+          .then((stream) => { if (videoRef.current) videoRef.current.srcObject = stream; })
+          .catch(() => setFaceStatus("Camera access is needed for face verification."));
+      }
     }
     return () => {
       if (videoRef.current?.srcObject) {
@@ -125,86 +129,73 @@ export default function App() {
   function resetAll() {
     setTx(null); setReceipt(null); setTranscript(""); setBalance(null);
     setAccountNumberInput(""); setAccountNumberError(""); setBankCode("");
-    voiceVectorRef.current = null;
     setStep("listen");
   }
 
-  async function startSession(forUserId: string, forLang: string) {
-    setAuthStatus("");
-    try {
-      const { registered } = await getVoiceStatus(forUserId);
-      if (!registered) {
-        setStep("faceAuth");
-        return;
-      }
-    } catch {
-      setAuthStatus("Couldn't reach the backend — check it's running.");
-      return;
-    }
-    const c = generateChallenge(forLang);
-    setChallenge(c);
-    setStep("auth");
-    await speak(phrase(forLang, "askRepeatDigits", c.spoken), forLang);
+  function startSession(forUserId: string) {
+    setUserId(forUserId);
+    setStep("faceAuth");
   }
 
-  async function onSubmitCard() {
-    setCardError("");
+  /** Shared by every way into the app — resolves the account's saved
+   * language and starts the session. */
+  function proceedWithAccount(accountId: string, preferredLanguage: string) {
+    const idx = LANGUAGES.findIndex((l) => l.code === preferredLanguage);
+    if (idx >= 0) setLangIdx(idx);
+    startSession(accountId);
+  }
+
+  /** Once a customer is onboarded, their card being plugged into the POS
+   * is just the physical gesture — the actual lookup only needs their
+   * name or phone number, since a 16-digit card number isn't something
+   * most elderly customers can reliably recall or read back. */
+  async function onSubmitLogin() {
+    const query = loginQuery.trim();
+    if (!query) return;
+    setLoginError("");
+    setNameMatches(null);
     setInserting(true);
     await new Promise((resolve) => setTimeout(resolve, 550)); // let the card-insert animation play out
     try {
-      const account = await getAccountByCard(cardNumber);
-      await proceedWithAccount(account.id, account.preferredLanguage);
+      if (looksLikePhoneNumber(query)) {
+        try {
+          const account = await getAccount(query.replace(/[\s-]/g, ""));
+          proceedWithAccount(account.id, account.preferredLanguage);
+          return;
+        } catch {
+          setLoginError("No account found with that phone number. Check it, or try their name instead.");
+          return;
+        }
+      }
+      const matches = await searchAccountsByName(query);
+      if (matches.length === 0) {
+        setLoginError("No account found with that name. Check the spelling, or try their phone number.");
+      } else if (matches.length === 1) {
+        const account = await getAccount(matches[0].id);
+        proceedWithAccount(account.id, account.preferredLanguage);
+      } else {
+        setNameMatches(matches);
+      }
     } catch {
-      setCardError("Card not recognized. Check the number, or enter your phone number manually.");
+      setLoginError("Couldn't reach the backend — check it's running.");
     } finally {
       setInserting(false);
     }
   }
 
-  /** Shared by every way into the app (card, phone number, name lookup) —
-   * resolves the account's saved language and starts the session. */
-  async function proceedWithAccount(accountId: string, preferredLanguage: string) {
-    const idx = LANGUAGES.findIndex((l) => l.code === preferredLanguage);
-    const lang = idx >= 0 ? preferredLanguage : LANGUAGES[langIdx].code;
-    setUserId(accountId);
-    if (idx >= 0) setLangIdx(idx);
-    await startSession(accountId, lang);
-  }
-
-  async function onSubmitNameLookup() {
-    setNameLookupError("");
-    setNameLookupBusy(true);
-    try {
-      const matches = await searchAccountsByName(nameQuery);
-      if (matches.length === 0) {
-        setNameMatches(null);
-        setNameLookupError("No account found with that name. Check the spelling, or ask the agent for help.");
-      } else if (matches.length === 1) {
-        const account = await getAccount(matches[0].id);
-        await proceedWithAccount(account.id, account.preferredLanguage);
-      } else {
-        setNameMatches(matches);
-      }
-    } catch {
-      setNameLookupError("Couldn't reach the backend — check it's running.");
-    } finally {
-      setNameLookupBusy(false);
-    }
-  }
-
   async function onSelectNameMatch(id: string) {
-    setNameLookupBusy(true);
+    setInserting(true);
     try {
       const account = await getAccount(id);
-      await proceedWithAccount(account.id, account.preferredLanguage);
+      proceedWithAccount(account.id, account.preferredLanguage);
     } catch {
-      setNameLookupError("Couldn't reach the backend — check it's running.");
+      setLoginError("Couldn't reach the backend — check it's running.");
     } finally {
-      setNameLookupBusy(false);
+      setInserting(false);
     }
   }
 
-  async function captureNameByVoice() {
+  async function captureLoginByVoice() {
     if (isRecording) { recorderRef.current?.stop(); return; }
     setIsRecording(true);
     const rec = await recordAudio();
@@ -213,9 +204,9 @@ export default function App() {
       setIsRecording(false);
       try {
         const { text } = await voiceProcess(blob, LANGUAGES[langIdx].code);
-        setNameQuery(text);
+        setLoginQuery(text);
       } catch {
-        setNameLookupError("Couldn't hear that clearly — try typing your name instead.");
+        setLoginError("Couldn't hear that clearly — try typing instead.");
       }
     });
   }
@@ -223,7 +214,7 @@ export default function App() {
   function onKeypadPress(key: string) {
     if (isSpeaking || !/\d/.test(key)) return;
     if (step === "card") {
-      setCardNumber((prev) => formatCardNumber(prev.replace(/\D/g, "") + key));
+      setLoginQuery((prev) => prev + key);
     } else if (step === "clarify" && tx?.needsClarification === "accountNumber") {
       setAccountNumberInput((prev) => (prev + key).slice(0, 10));
     }
@@ -232,7 +223,13 @@ export default function App() {
   async function onSubmitAccountNumber() {
     if (!tx) return;
     setAccountNumberError("");
-    const resolved = await resolveRecipientByAccount(tx.id, accountNumberInput, bankCode);
+    setAccountNumberBusy(true);
+    let resolved: TransactionRecord;
+    try {
+      resolved = await resolveRecipientByAccount(tx.id, accountNumberInput, bankCode);
+    } finally {
+      setAccountNumberBusy(false);
+    }
     setTx(resolved);
 
     if (resolved.state === "CONFIRMATION_REQUIRED") {
@@ -251,48 +248,40 @@ export default function App() {
     }
   }
 
-  async function toggleAuthRecording() {
-    if (isRecording) { recorderRef.current?.stop(); return; }
-    setIsRecording(true);
-    setAuthStatus("Listening... tap again to stop.");
-    const rec = await recordAudio();
-    recorderRef.current = rec;
-    rec.result.then(async (blob) => {
-      setIsRecording(false);
-      setAuthStatus("Checking your voice...");
-      const vector = await blobToMfccVector(blob);
-      if (!vector) { setAuthStatus("Couldn't hear that clearly — try again."); return; }
-      try {
-        const lang = LANGUAGES[langIdx].code;
-        const result = await authorizeVoice(userId, vector);
-        if (result.authorized) {
-          try {
-            const account = await getAccount(userId);
-            await speak(phrase(lang, "welcomeBack", account.name), lang);
-          } catch {
-            /* welcome message is a nicety — proceed either way */
-          }
-          setStep("listen");
-        } else {
-          await speak(phrase(lang, "voiceAuthStepUp"), lang);
-          setStep("faceAuth");
-        }
-      } catch {
-        setAuthStatus("Couldn't reach the backend — check it's running and try again.");
-      }
-    });
-  }
-
   async function onAuthFaceResult(matched: boolean) {
     if (videoRef.current?.srcObject) {
       (videoRef.current.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
     }
     if (matched) {
+      const lang = LANGUAGES[langIdx].code;
+      try {
+        const account = await getAccount(userId);
+        await speak(phrase(lang, "welcomeBack", account.name), lang);
+      } catch {
+        /* welcome message is a nicety — proceed either way */
+      }
       setStep("listen");
       return;
     }
-    await speak(phrase(LANGUAGES[langIdx].code, "voiceAuthFailed"), LANGUAGES[langIdx].code);
+    await speak(phrase(LANGUAGES[langIdx].code, "faceAuthFailed"), LANGUAGES[langIdx].code);
     setStep("authFailed");
+  }
+
+  async function captureAndAuthFace() {
+    if (!videoRef.current) return;
+    setFaceStatus("Looking for your face...");
+    const descriptor = await captureFaceDescriptor(videoRef.current);
+    if (!descriptor) {
+      setFaceStatus("Couldn't find a face — look straight at the camera and try again.");
+      return;
+    }
+    try {
+      const result = await authorizeFace(userId, descriptor);
+      setFaceStatus("");
+      await onAuthFaceResult(result.authorized);
+    } catch {
+      setFaceStatus("Couldn't reach the backend — try again.");
+    }
   }
 
   async function toggleListenRecording() {
@@ -304,11 +293,7 @@ export default function App() {
         setIsRecording(false);
         try {
           const langCode = LANGUAGES[langIdx].code;
-          const [{ text, intent }, vector] = await Promise.all([
-            voiceProcess(blob, langCode),
-            blobToMfccVector(blob),
-          ]);
-          voiceVectorRef.current = vector;
+          const { text, intent } = await voiceProcess(blob, langCode);
           setTranscript(text);
           await handleIntent(intent);
         } catch {
@@ -388,29 +373,20 @@ export default function App() {
 
   async function onConfirm() {
     if (!tx) return;
-    const advanced = await confirmAdvance(tx.id, voiceVectorRef.current || undefined);
+    const advanced = await confirmAdvance(tx.id);
     setTx(advanced);
-
-    if (advanced.state === "FACE_VERIFIED") {
-      // The same recording used for the spoken command already cleared
-      // the stricter transaction-time voice match — face check skipped.
-      const lang = LANGUAGES[langIdx].code;
-      await speak(phrase(lang, "voiceVerifiedSkipFace"), lang);
-      await finalizeTransaction(advanced.id);
-      return;
-    }
     setStep("face");
   }
 
-  async function onFaceResult(matched: boolean) {
+  async function onFaceResult(matched: boolean, descriptor?: number[]) {
     if (!tx) return;
     if (videoRef.current?.srcObject) {
       (videoRef.current.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
     }
-    const verified = await verifyFace(tx.id, matched);
+    const verified = await verifyFace(tx.id, descriptor ? { faceDescriptor: descriptor } : { matched });
     setTx(verified);
 
-    if (!matched) {
+    if (verified.state !== "FACE_VERIFIED") {
       setErrorCode("FACE_VERIFICATION_FAILED");
       setStep("error");
       return;
@@ -418,9 +394,21 @@ export default function App() {
     await finalizeTransaction(verified.id);
   }
 
+  async function captureAndVerifyFace() {
+    if (!videoRef.current || !tx) return;
+    setFaceStatus("Looking for your face...");
+    const descriptor = await captureFaceDescriptor(videoRef.current);
+    if (!descriptor) {
+      setFaceStatus("Couldn't find a face — look straight at the camera and try again.");
+      return;
+    }
+    setFaceStatus("");
+    await onFaceResult(true, descriptor);
+  }
+
   function downloadReceipt() {
     if (!receipt) return;
-    const text = `NativePay Receipt\n------------------\nTransaction ID: ${receipt.transactionId}\nType: ${receipt.type}\nAmount: NGN ${receipt.amount}\nRecipient: ${receipt.recipient || "-"}\nReference: ${receipt.reference}\nDate: ${receipt.date}\nEnvironment: ${receipt.environment}\n`;
+    const text = `ElderPay Receipt\n------------------\nTransaction ID: ${receipt.transactionId}\nType: ${receipt.type}\nAmount: NGN ${receipt.amount}\nRecipient: ${receipt.recipient || "-"}\nReference: ${receipt.reference}\nDate: ${receipt.date}\nEnvironment: ${receipt.environment}\n`;
     const blob = new Blob([text], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -429,13 +417,10 @@ export default function App() {
   }
 
   const titles: Record<Step, [string, string]> = {
-    card: ["NativePay", "Insert your card to begin."],
-    start: ["NativePay", "Enter your phone number and pick your language to begin."],
-    nameLookup: ["Find your account", "No card number? We can look you up by name instead."],
-    auth: ["Verify it's you", "Repeat the numbers you hear."],
-    faceAuth: ["One more check", "A quick face check confirms it's you."],
+    card: ["ElderPay", "Plug in the customer's card, then look them up by name or phone number."],
+    faceAuth: ["Verify it's you", "A quick face check confirms it's you."],
     authFailed: ["Couldn't verify you", "Please speak with the agent for help."],
-    listen: ["NativePay", "Tap and speak — or try a quick demo phrase."],
+    listen: ["ElderPay", "Tap and speak — or try a quick demo phrase."],
     confirm: ["Confirm", "Check the details before continuing."],
     clarify: ["One more thing", "I need a bit more detail."],
     error: ["Let's try that again", ""],
@@ -452,7 +437,7 @@ export default function App() {
       <div style={s.appCard}>
         <header style={s.header}>
           <div style={s.topRow}>
-            <Link to="/" style={s.backLink}>← NativePay</Link>
+            <Link to="/" style={s.backLink}>← ElderPay</Link>
             <span style={s.demoBadge}>Hackathon Prototype</span>
           </div>
           <h1 style={s.h1}>{title}</h1>
@@ -469,96 +454,61 @@ export default function App() {
                   <div style={s.cardBrand}>GTBank</div>
                   <div style={s.cardChip} />
                 </div>
-                <div style={s.cardNumberDisplay}>{cardNumber || "•••• •••• •••• ••••"}</div>
+                <div style={s.cardNumberDisplay}>•••• •••• •••• ••••</div>
                 <div style={s.cardBottomRow}>
                   <div style={s.cardTypeLabel}>VERVE</div>
                 </div>
               </div>
+              <div style={s.hint}>Plug the card into the POS, then look the customer up by name or phone number.</div>
               <input
                 style={s.input}
-                value={cardNumber}
-                onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
-                placeholder="Card number"
-                maxLength={19}
+                value={loginQuery}
+                onChange={(e) => setLoginQuery(e.target.value)}
+                placeholder="Name or phone number"
                 disabled={inserting}
               />
-              {cardError && <div style={s.cardErrorText}>{cardError}</div>}
-              <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} disabled={inserting || cardNumber.replace(/\D/g, "").length < 16} onClick={onSubmitCard}>{inserting ? "Inserting..." : "Insert card"}</button>
-              <div style={s.quickRow}>
-                <span style={s.quickBtn} onClick={() => setCardNumber("5060 0000 0000 0001")}>Use demo card (Olawale Zainab)</span>
-              </div>
-              <div style={s.hint}>No card? <span style={s.linkText} onClick={() => setStep("start")}>Enter phone number manually</span></div>
-              <div style={s.hint}>Forgot your card number? <span style={s.linkText} onClick={() => setStep("nameLookup")}>Find your account by name</span></div>
-            </div>
-          )}
-
-          {step === "nameLookup" && (
-            <div style={s.micStage}>
-              <div style={s.hint}>Say or type the name you registered with.</div>
-              <input
-                style={s.input}
-                value={nameQuery}
-                onChange={(e) => setNameQuery(e.target.value)}
-                placeholder="Full name"
-              />
-              <button style={{ ...s.micBtn, ...(isRecording ? s.micBtnRecording : {}) }} onClick={captureNameByVoice}>🎤</button>
-              {nameLookupError && <div style={s.cardErrorText}>{nameLookupError}</div>}
+              <button style={{ ...s.micBtn, ...(isRecording ? s.micBtnRecording : {}) }} onClick={captureLoginByVoice}>🎤</button>
+              {loginError && <div style={s.cardErrorText}>{loginError}</div>}
               {nameMatches && nameMatches.length > 1 && (
                 <div style={{ width: "100%" }}>
                   <div style={s.hint}>More than one match — which one is you?</div>
                   {nameMatches.map((m) => (
-                    <button key={m.id} style={{ ...s.btn, ...s.btnGhost, width: "100%", marginBottom: 8 }} onClick={() => onSelectNameMatch(m.id)} disabled={nameLookupBusy}>{m.name}</button>
+                    <button key={m.id} style={{ ...s.btn, ...s.btnGhost, width: "100%", marginBottom: 8 }} onClick={() => onSelectNameMatch(m.id)} disabled={inserting}>{m.name}</button>
                   ))}
                 </div>
               )}
-              <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} disabled={!nameQuery.trim() || nameLookupBusy} onClick={onSubmitNameLookup}>{nameLookupBusy ? "Looking..." : "Find my account"}</button>
-              <div style={s.hint}><span style={s.linkText} onClick={() => setStep("card")}>Back to card entry</span></div>
-            </div>
-          )}
-
-          {step === "start" && (
-            <>
-              <label style={s.label}>Phone number</label>
-              <input style={s.input} value={userId} onChange={(e) => setUserId(e.target.value)} />
-              <div style={s.langRow}>
-                {LANGUAGES.map((l, i) => (
-                  <div key={l.code + i} style={{ ...s.langChip, ...(i === langIdx ? s.langChipActive : {}) }} onClick={() => setLangIdx(i)}>{l.label}</div>
-                ))}
+              <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} disabled={inserting || !loginQuery.trim()} onClick={onSubmitLogin}>{inserting ? "Looking up..." : "Continue"}</button>
+              <div style={s.quickRow}>
+                <span className="clickable" style={s.quickBtn} onClick={() => setLoginQuery("Olawale Zainab")}>Demo customer: Olawale Zainab</span>
               </div>
-              <div style={s.micStage}>
-                <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} disabled={!userId.trim()} onClick={() => startSession(userId, LANGUAGES[langIdx].code)}>Continue</button>
-                <div style={s.hint}>
-                  <span style={s.linkText} onClick={() => setStep("card")}>Insert card instead</span>
-                  {" · "}New here? <Link to="/onboarding" style={{ color: "var(--indigo)", fontWeight: 700 }}>Create an account</Link>
-                </div>
-              </div>
-            </>
-          )}
-
-          {step === "auth" && challenge && (
-            <div style={s.micStage}>
-              <div style={s.transcript}>{challenge.spoken}</div>
-              <div style={s.hint}>Listen, then tap and repeat these numbers back.</div>
-              <span style={s.linkText} onClick={() => speak(phrase(LANGUAGES[langIdx].code, "askRepeatDigits", challenge.spoken), LANGUAGES[langIdx].code)}>🔊 Repeat prompt</span>
-              <button style={{ ...s.micBtn, ...(isRecording ? s.micBtnRecording : {}) }} onClick={toggleAuthRecording}>🎤</button>
-              <div style={s.hint}>{authStatus}</div>
+              <div style={s.hint}>New here? <Link to="/onboarding" style={{ color: "var(--indigo)", fontWeight: 700 }}>Onboard a customer</Link></div>
             </div>
           )}
 
           {step === "faceAuth" && (
             <div style={s.faceStage}>
               <video ref={videoRef} autoPlay playsInline muted style={s.video} />
-              <div style={s.mockNote}>Camera capture is real. Match/no-match is simulated for the demo — swap in a real verification provider before production use.</div>
-              <div style={{ ...s.actionRow, width: "100%" }}>
-                <button style={{ ...s.btn, ...s.btnGhost }} onClick={() => onAuthFaceResult(false)}>Simulate: no match</button>
-                <button style={{ ...s.btn, ...s.btnGold }} onClick={() => onAuthFaceResult(true)}>Simulate: match ✓</button>
-              </div>
+              {faceRegistered ? (
+                <>
+                  <div style={s.hint}>Look at the camera, then tap to verify.</div>
+                  <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} onClick={captureAndAuthFace}>Verify my face</button>
+                  <div style={s.hint}>{faceStatus}</div>
+                </>
+              ) : (
+                <>
+                  <div style={s.mockNote}>No face on file for this demo account. Match/no-match is simulated here — swap in a real verification provider before production use.</div>
+                  <div style={{ ...s.actionRow, width: "100%" }}>
+                    <button style={{ ...s.btn, ...s.btnGhost }} onClick={() => onAuthFaceResult(false)}>Simulate: no match</button>
+                    <button style={{ ...s.btn, ...s.btnGold }} onClick={() => onAuthFaceResult(true)}>Simulate: match ✓</button>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
           {step === "authFailed" && (
             <>
-              <div style={s.errorCard}>We couldn't verify it's you by voice or face. Please speak with the agent for help.</div>
+              <div style={s.errorCard}>We couldn't verify it's you by face. Please speak with the agent for help.</div>
               <div style={s.actionRow}>
                 <button style={{ ...s.btn, ...s.btnPrimary, flex: 1 }} onClick={() => setStep("card")}>Try again</button>
               </div>
@@ -569,7 +519,7 @@ export default function App() {
             <>
               <div style={s.langRow}>
                 {LANGUAGES.map((l, i) => (
-                  <div key={l.code + i} style={{ ...s.langChip, ...(i === langIdx ? s.langChipActive : {}) }} onClick={() => setLangIdx(i)}>{l.label}</div>
+                  <div className="clickable" key={l.code + i} style={{ ...s.langChip, ...(i === langIdx ? s.langChipActive : {}) }} onClick={() => setLangIdx(i)}>{l.label}</div>
                 ))}
               </div>
               <div style={s.micStage}>
@@ -577,11 +527,11 @@ export default function App() {
                 <div style={s.transcript}>{transcript || "\u00A0"}</div>
                 <div style={s.hint}>Tap and speak, e.g. "Send 10,000 to Adewale"</div>
                 <div style={s.quickRow}>
-                  <span style={s.quickBtn} onClick={() => quickDemo("send")}>Demo: Send ₦10,000</span>
-                  <span style={s.quickBtn} onClick={() => quickDemo("balance")}>Demo: Check balance</span>
-                  <span style={s.quickBtn} onClick={() => quickDemo("withdraw")}>Demo: Withdraw ₦5,000</span>
-                  <span style={s.quickBtn} onClick={() => quickDemo("deposit")}>Demo: Deposit ₦20,000</span>
-                  <span style={s.quickBtn} onClick={() => quickDemo("airtime")}>Demo: Buy ₦500 airtime</span>
+                  <span className="clickable" style={s.quickBtn} onClick={() => quickDemo("send")}>Demo: Send ₦10,000</span>
+                  <span className="clickable" style={s.quickBtn} onClick={() => quickDemo("balance")}>Demo: Check balance</span>
+                  <span className="clickable" style={s.quickBtn} onClick={() => quickDemo("withdraw")}>Demo: Withdraw ₦5,000</span>
+                  <span className="clickable" style={s.quickBtn} onClick={() => quickDemo("deposit")}>Demo: Deposit ₦20,000</span>
+                  <span className="clickable" style={s.quickBtn} onClick={() => quickDemo("airtime")}>Demo: Buy ₦500 airtime</span>
                 </div>
               </div>
             </>
@@ -599,6 +549,11 @@ export default function App() {
                 </div>
                 <div style={s.badgeRow}><span style={{ ...s.badge, ...s.badgeGold }}>Confidence {Math.round((tx.confidence || 0) * 100)}%</span></div>
               </div>
+              <span
+                className="clickable"
+                style={s.linkText}
+                onClick={() => speak(confirmPhraseFor(LANGUAGES[langIdx].code, tx.action, tx.amount, tx.recipient), LANGUAGES[langIdx].code)}
+              >🔊 Repeat prompt</span>
               <div style={s.actionRow}>
                 <button style={{ ...s.btn, ...s.btnGhost }} onClick={onCancel}>No, cancel</button>
                 <button style={{ ...s.btn, ...s.btnPrimary }} onClick={onConfirm}>Yes, continue</button>
@@ -609,9 +564,9 @@ export default function App() {
           {step === "clarify" && tx?.needsClarification === "accountNumber" && (
             <div style={s.micStage}>
               <div style={{ ...s.to, fontSize: 15, color: "var(--indigo)", fontWeight: 600, textAlign: "center" }}>
-                I don't recognize that name. What's their bank and account number?
+                I don't recognize that name. Agent: ask the customer for the recipient's bank and account number, and enter it below.
               </div>
-              <select style={s.input} value={bankCode} onChange={(e) => setBankCode(e.target.value)}>
+              <select style={s.input} value={bankCode} onChange={(e) => setBankCode(e.target.value)} disabled={accountNumberBusy}>
                 <option value="">{banks.length ? "Select bank" : "Loading banks..."}</option>
                 {banks.map((b) => <option key={b.code} value={b.code}>{b.name}</option>)}
               </select>
@@ -621,9 +576,10 @@ export default function App() {
                 onChange={(e) => setAccountNumberInput(e.target.value.replace(/\D/g, "").slice(0, 10))}
                 placeholder="Account number"
                 inputMode="numeric"
+                disabled={accountNumberBusy}
               />
               {accountNumberError && <div style={s.cardErrorText}>{accountNumberError}</div>}
-              <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} disabled={accountNumberInput.length < 10 || !bankCode} onClick={onSubmitAccountNumber}>Look up</button>
+              <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} disabled={accountNumberInput.length < 10 || !bankCode || accountNumberBusy} onClick={onSubmitAccountNumber}>{accountNumberBusy ? "Looking up..." : "Look up"}</button>
             </div>
           )}
 
@@ -652,11 +608,21 @@ export default function App() {
           {step === "face" && (
             <div style={s.faceStage}>
               <video ref={videoRef} autoPlay playsInline muted style={s.video} />
-              <div style={s.mockNote}>Camera capture is real. Match/no-match is simulated for the demo — swap in a real verification provider before production use.</div>
-              <div style={{ ...s.actionRow, width: "100%" }}>
-                <button style={{ ...s.btn, ...s.btnGhost }} onClick={() => onFaceResult(false)}>Simulate: no match</button>
-                <button style={{ ...s.btn, ...s.btnGold }} onClick={() => onFaceResult(true)}>Simulate: match ✓</button>
-              </div>
+              {faceRegistered ? (
+                <>
+                  <div style={s.hint}>Look at the camera, then tap to verify.</div>
+                  <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} onClick={captureAndVerifyFace}>Verify my face</button>
+                  <div style={s.hint}>{faceStatus}</div>
+                </>
+              ) : (
+                <>
+                  <div style={s.mockNote}>No face on file for this demo account. Match/no-match is simulated here — swap in a real verification provider before production use.</div>
+                  <div style={{ ...s.actionRow, width: "100%" }}>
+                    <button style={{ ...s.btn, ...s.btnGhost }} onClick={() => onFaceResult(false)}>Simulate: no match</button>
+                    <button style={{ ...s.btn, ...s.btnGold }} onClick={() => onFaceResult(true)}>Simulate: match ✓</button>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -708,7 +674,7 @@ export default function App() {
         </main>
 
         <footer style={s.footer}>
-          <span style={s.resetLink} onClick={resetAll}>Start over</span>
+          <span className="clickable" style={s.resetLink} onClick={resetAll}>Start over</span>
           <span style={{ margin: "0 8px", color: "#c9c2b4" }}>·</span>
           <Link to="/history" style={s.resetLink}>History</Link>
         </footer>
@@ -718,57 +684,57 @@ export default function App() {
 }
 
 const s: Record<string, React.CSSProperties> = {
-  cardVisual: { width: "100%", aspectRatio: "1.586", maxHeight: 150, borderRadius: 16, background: "linear-gradient(135deg, #FF7A00 0%, #E85D00 100%)", padding: 18, display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: "0 10px 24px rgba(232,93,0,0.3)" },
+  cardVisual: { width: "100%", aspectRatio: "1.586", maxHeight: 150, borderRadius: 16, background: "linear-gradient(135deg, #FF8A1F 0%, #E85D00 55%, #C94800 100%)", padding: 18, display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: "0 14px 30px rgba(232,93,0,0.35), inset 0 1px 0 rgba(255,255,255,0.25)" },
   cardVisualInserting: { animation: "cardInsert 550ms ease-in forwards" },
   cardTopRow: { display: "flex", alignItems: "center", justifyContent: "space-between" },
   cardBrand: { fontSize: 18, fontWeight: 800, fontStyle: "italic", letterSpacing: "0.02em", color: "#fff" },
-  cardChip: { width: 34, height: 26, borderRadius: 5, background: "linear-gradient(135deg, var(--gold-light), var(--gold))" },
+  cardChip: { width: 34, height: 26, borderRadius: 5, background: "linear-gradient(135deg, var(--gold-light), var(--gold))", boxShadow: "0 2px 4px rgba(0,0,0,0.2)" },
   cardNumberDisplay: { fontFamily: "monospace", fontSize: 17, letterSpacing: "0.06em", color: "var(--paper)" },
   cardBottomRow: { display: "flex", justifyContent: "flex-end" },
   cardTypeLabel: { fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", color: "rgba(255,255,255,0.85)" },
   cardErrorText: { color: "var(--alert)", fontSize: "12.5px", textAlign: "center" },
-  linkText: { color: "var(--indigo)", fontWeight: 700, cursor: "pointer", textDecoration: "underline" },
-  appCard: { width: "100%", maxWidth: 460, background: "#fff", borderRadius: 22, overflow: "hidden", boxShadow: "0 20px 60px rgba(19,28,59,0.18)", border: "1px solid var(--line)" },
-  header: { background: "var(--indigo)", color: "var(--paper)", padding: "20px 26px 16px", position: "relative", overflow: "hidden" },
-  topRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
+  linkText: { color: "var(--indigo)", fontWeight: 700, textDecoration: "underline" },
+  appCard: { width: "100%", maxWidth: 460, background: "#fff", borderRadius: 22, overflow: "hidden", boxShadow: "var(--shadow-lg)", border: "1px solid var(--line)" },
+  header: { background: "linear-gradient(135deg, var(--indigo) 0%, var(--indigo-deep) 100%)", color: "var(--paper)", padding: "22px 26px 18px", position: "relative", overflow: "hidden" },
+  topRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, position: "relative", zIndex: 1 },
   backLink: { color: "var(--gold-light)", fontSize: 12, textDecoration: "none" },
-  demoBadge: { fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", background: "var(--gold)", color: "#fff", padding: "4px 9px", borderRadius: 100 },
-  h1: { fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 21, margin: "0 0 4px" },
-  sub: { margin: 0, fontSize: 12, color: "rgba(245,239,226,0.75)" },
+  demoBadge: { fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", background: "linear-gradient(135deg, var(--gold-light), var(--gold))", color: "#fff", padding: "4px 10px", borderRadius: 100, boxShadow: "0 2px 8px rgba(201,138,44,0.4)" },
+  h1: { fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 22, margin: "0 0 4px", position: "relative", zIndex: 1 },
+  sub: { margin: 0, fontSize: 12, color: "rgba(245,239,226,0.75)", position: "relative", zIndex: 1 },
   main: { padding: "24px 26px", minHeight: 360, display: "flex", flexDirection: "column", position: "relative" },
   speakingBlock: { position: "absolute", inset: 0, zIndex: 5, cursor: "not-allowed", background: "transparent" },
   label: { fontSize: 13, fontWeight: 600, color: "#5c5346", marginBottom: 6, display: "block" },
-  input: { width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--line)", fontSize: 15, marginBottom: 14 },
+  input: { width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--line)", fontSize: 15, marginBottom: 14, transition: "border-color 160ms var(--ease-out), box-shadow 160ms var(--ease-out)" },
   micStage: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, gap: 14, padding: "4px 0" },
-  micBtn: { width: 88, height: 88, borderRadius: "50%", border: "none", background: "var(--gold)", color: "#fff", fontSize: 30, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 8px 24px rgba(201,138,44,0.35)" },
-  micBtnRecording: { background: "var(--alert)" },
+  micBtn: { width: 92, height: 92, borderRadius: "50%", border: "none", background: "linear-gradient(150deg, var(--gold-light), var(--gold))", color: "#fff", fontSize: 32, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "var(--shadow-gold)" },
+  micBtnRecording: { background: "linear-gradient(150deg, #d9564a, var(--alert))", animation: "micRing 1.4s ease-out infinite" },
   hint: { fontSize: "12.5px", color: "#6b6357", textAlign: "center", maxWidth: 290 },
   transcript: { fontFamily: "Fraunces, serif", fontSize: "16.5px", textAlign: "center", color: "var(--indigo)", minHeight: 24, padding: "0 8px" },
   quickRow: { display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap", justifyContent: "center" },
-  quickBtn: { border: "1px solid var(--line)", background: "#fff", padding: "7px 12px", borderRadius: 100, fontSize: 12, fontWeight: 600, cursor: "pointer" },
+  quickBtn: { border: "1px solid var(--line)", background: "#fff", padding: "7px 12px", borderRadius: 100, fontSize: 12, fontWeight: 600 },
   langRow: { display: "flex", gap: 7, marginBottom: 16, flexWrap: "wrap" },
-  langChip: { border: "1px solid var(--line)", background: "#fff", padding: "6px 11px", borderRadius: 100, fontSize: 12, fontWeight: 600, cursor: "pointer" },
+  langChip: { border: "1px solid var(--line)", background: "#fff", padding: "6px 11px", borderRadius: 100, fontSize: 12, fontWeight: 600 },
   langChipActive: { background: "var(--indigo)", color: "#fff", borderColor: "var(--indigo)" },
-  confirmCard: { background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 14, padding: 18, textAlign: "center" },
-  amount: { fontFamily: "Fraunces, serif", fontSize: 26, fontWeight: 700, color: "var(--indigo)", margin: "6px 0" },
+  confirmCard: { background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 14, padding: 20, textAlign: "center", animation: "fadeInUp 320ms var(--ease-out)" },
+  amount: { fontFamily: "Fraunces, serif", fontSize: 28, fontWeight: 800, color: "var(--indigo)", margin: "6px 0" },
   to: { fontSize: "13.5px", color: "#6b6357" },
   actionRow: { display: "flex", gap: 10, marginTop: 16 },
-  btn: { flex: 1, padding: 13, borderRadius: 12, border: "none", fontWeight: 700, fontSize: "14.5px", cursor: "pointer" },
-  btnPrimary: { background: "var(--indigo)", color: "#fff" },
+  btn: { flex: 1, padding: 13, borderRadius: 12, border: "none", fontWeight: 700, fontSize: "14.5px" },
+  btnPrimary: { background: "linear-gradient(135deg, var(--indigo), var(--indigo-deep))", color: "#fff", boxShadow: "var(--shadow-sm)" },
   btnGhost: { background: "#fff", color: "var(--charcoal)", border: "1px solid var(--line)" },
-  btnGold: { background: "var(--gold)", color: "#fff" },
+  btnGold: { background: "linear-gradient(135deg, var(--gold-light), var(--gold))", color: "#fff", boxShadow: "var(--shadow-gold)" },
   badgeRow: { display: "flex", gap: 6, justifyContent: "center", marginTop: 10, flexWrap: "wrap" },
   badge: { fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", padding: "3px 8px", borderRadius: 100, background: "var(--indigo)", color: "var(--paper)" },
-  badgeGold: { background: "var(--gold)" },
-  errorCard: { background: "#fdf1ef", border: "1px solid #f0c7be", borderRadius: 14, padding: 18, textAlign: "center", color: "var(--alert)", fontSize: 14 },
-  video: { width: 190, height: 190, borderRadius: "50%", objectFit: "cover", border: "4px solid var(--gold)", background: "var(--indigo-deep)" },
+  badgeGold: { background: "linear-gradient(135deg, var(--gold-light), var(--gold))" },
+  errorCard: { background: "#fdf1ef", border: "1px solid #f0c7be", borderRadius: 14, padding: 18, textAlign: "center", color: "var(--alert)", fontSize: 14, animation: "fadeInUp 320ms var(--ease-out)" },
+  video: { width: 190, height: 190, borderRadius: "50%", objectFit: "cover", border: "4px solid var(--gold)", background: "var(--indigo-deep)", boxShadow: "var(--shadow-gold)" },
   faceStage: { display: "flex", flexDirection: "column", alignItems: "center", gap: 12, flex: 1, justifyContent: "center" },
   mockNote: { fontSize: "10.5px", color: "#a08a5f", background: "#fbf3e2", border: "1px dashed #d9b978", padding: "6px 10px", borderRadius: 8, textAlign: "center" },
   statusStage: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, flex: 1, textAlign: "center" },
   spinner: { width: 36, height: 36, borderRadius: "50%", border: "4px solid var(--line)", borderTopColor: "var(--gold)", animation: "spin .9s linear infinite" },
-  receipt: { background: "#fff", border: "1px solid var(--line)", borderRadius: 14, padding: 18 },
-  receiptH3: { fontFamily: "Fraunces, serif", margin: "0 0 12px", color: "var(--success)", fontSize: 17 },
+  receipt: { background: "#fff", border: "1px solid var(--line)", borderRadius: 14, padding: 18, animation: "popIn 420ms var(--ease-spring)" },
+  receiptH3: { fontFamily: "Fraunces, serif", margin: "0 0 12px", color: "var(--success)", fontSize: 18, fontWeight: 700 },
   receiptRow: { display: "flex", justifyContent: "space-between", fontSize: 13, padding: "6px 0", borderBottom: "1px dashed var(--line)" },
   footer: { padding: "12px 26px 18px", textAlign: "center" },
-  resetLink: { fontSize: 12, color: "#8a8175", cursor: "pointer", textDecoration: "underline" }
+  resetLink: { fontSize: 12, color: "#8a8175", textDecoration: "underline" }
 };

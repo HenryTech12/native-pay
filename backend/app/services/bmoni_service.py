@@ -60,7 +60,7 @@ def _headers() -> dict:
 
 
 def _mock_reference() -> str:
-    return f"NP-MOCK-{int(time.time() * 1000)}-{random.randint(0, 9999)}"
+    return f"EP-MOCK-{int(time.time() * 1000)}-{random.randint(0, 9999)}"
 
 
 def is_mock_mode() -> bool:
@@ -353,10 +353,10 @@ async def get_real_transactions(user_id: str, smart_wallet_id: str) -> dict:
 
 
 async def onboard_full(first_name: str, email: str, phone_number: str, bvn: str = SANDBOX_TEST_BVN) -> dict:
-    """One-time orchestration run at NativePay account registration:
+    """One-time orchestration run at ElderPay account registration:
     create user -> create wallet -> KYC -> activate NGN rail. Each step
     can raise — the caller decides whether a partial failure still lets
-    the local NativePay account exist (it should; BMONI onboarding is
+    the local ElderPay account exist (it should; BMONI onboarding is
     best-effort, never a hard gate on using the rest of the app).
     Returns the identifiers to persist on the local Account so this
     never needs to run again for this user."""

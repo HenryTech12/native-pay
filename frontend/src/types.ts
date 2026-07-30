@@ -64,6 +64,7 @@ export interface AccountProfile {
   preferredLanguage: string;
   balance: number;
   address: string | null;
+  email: string | null;
   cardNumber: string | null;
 }
 
@@ -71,6 +72,7 @@ export interface AccountRegisterPayload {
   userId: string;
   fullName: string;
   address: string;
+  email: string;
   language: string;
 }
 
@@ -85,6 +87,17 @@ export interface VoiceAuthorizeResult {
   reason?: string;
 }
 
+export interface FaceStatus {
+  registered: boolean;
+}
+
+export interface FaceAuthorizeResult {
+  authorized: boolean;
+  distance?: number;
+  threshold?: number;
+  reason?: string;
+}
+
 export interface Bank {
   name: string;
   code: string;
@@ -94,6 +107,7 @@ export interface HealthStatus {
   ok: boolean;
   demoMode: boolean;
   bmoniMockMode: boolean;
+  dbConnected: boolean;
 }
 
 export interface AgentBmoniProfile {

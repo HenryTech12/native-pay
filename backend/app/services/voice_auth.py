@@ -4,12 +4,18 @@ client-side with Meyda.js) compared via cosine similarity. A real signal,
 NOT trained speaker-verification. Facial capture remains the actual
 authorization gate; this only decides whether to skip straight to it.
 
-Storage is in-memory for the hackathon demo — swap for a real datastore
-before this goes anywhere near production or a second server instance.
+Not called anywhere in the active login/transaction flow right now —
+voice auth is parked for a future phase when it scales back in (see
+app/main.py, App.tsx). Kept working and persisted the same way as
+face_auth.py (Postgres when DATABASE_URL is set, in-memory otherwise)
+so it's ready to reconnect later without rewriting storage.
 """
 
 import math
 import os
+from typing import Optional
+
+from app.services import db
 
 _voiceprints: dict[str, list[float]] = {}
 
@@ -33,12 +39,21 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
 
 
 def register_voiceprint(user_id: str, feature_vector: list[float]) -> dict:
-    _voiceprints[user_id] = feature_vector
+    if db.is_ready():
+        db.register_voiceprint(user_id, feature_vector)
+    else:
+        _voiceprints[user_id] = feature_vector
     return {"registered": True, "userId": user_id}
 
 
+def _stored_voiceprint(user_id: str) -> Optional[list[float]]:
+    if db.is_ready():
+        return db.get_voiceprint(user_id)
+    return _voiceprints.get(user_id)
+
+
 def authorize_by_voice(user_id: str, feature_vector: list[float]) -> dict:
-    stored = _voiceprints.get(user_id)
+    stored = _stored_voiceprint(user_id)
     if stored is None:
         return {"authorized": False, "reason": "no_registered_voiceprint"}
     similarity = _cosine_similarity(stored, feature_vector)
@@ -50,7 +65,7 @@ def authorize_for_transaction(user_id: str, feature_vector: list[float]) -> dict
     face check can be skipped — same mechanism as authorize_by_voice,
     higher bar, because this one authorizes money movement rather than
     just a login shortcut."""
-    stored = _voiceprints.get(user_id)
+    stored = _stored_voiceprint(user_id)
     if stored is None:
         return {"authorized": False, "reason": "no_registered_voiceprint"}
     similarity = _cosine_similarity(stored, feature_vector)
@@ -58,4 +73,4 @@ def authorize_for_transaction(user_id: str, feature_vector: list[float]) -> dict
 
 
 def has_voiceprint(user_id: str) -> bool:
-    return user_id in _voiceprints
+    return _stored_voiceprint(user_id) is not None

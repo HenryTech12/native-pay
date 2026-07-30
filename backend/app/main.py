@@ -9,13 +9,13 @@ from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from app.services import bmoni_service, groq_service, paystack_service, store, transaction_service, voice_auth, yarngpt_service
+from app.services import bmoni_service, db, face_auth, groq_service, paystack_service, store, transaction_service, voice_auth, yarngpt_service
 from app.services.languages import supported_languages
 from app.services.transaction_service import STATES
 
 logger = logging.getLogger("nativepay")
 
-app = FastAPI(title="NativePay API")
+app = FastAPI(title="ElderPay API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -25,9 +25,19 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+def on_startup():
+    db.init_schema()  # no-op if DATABASE_URL isn't set; falls back to in-memory storage on failure
+
+
 @app.get("/api/health")
 def health():
-    return {"ok": True, "demoMode": True, "bmoniMockMode": bmoni_service.is_mock_mode()}
+    return {
+        "ok": True,
+        "demoMode": True,
+        "bmoniMockMode": bmoni_service.is_mock_mode(),
+        "dbConnected": db.is_ready(),
+    }
 
 
 @app.get("/api/languages")
@@ -131,7 +141,8 @@ def transactions_cancel(tx_id: str):
 
 class VerifyFaceBody(BaseModel):
     id: str
-    matched: bool = False
+    faceDescriptor: Optional[list[float]] = None
+    matched: bool = False  # fallback only for accounts with no registered face descriptor
 
 
 @app.get("/api/banks")
@@ -170,10 +181,20 @@ async def transactions_resolve_recipient(body: ResolveRecipientBody):
 
 @app.post("/api/transactions/verify-face")
 def transactions_verify_face(body: VerifyFaceBody):
-    result = transaction_service.record_face_verification(body.id, body.matched)
-    if not result:
+    """Verifies server-side whenever a real face descriptor is supplied
+    (the account has one on file) -- never trusts a client-asserted
+    match for that case. Falls back to the client-asserted `matched`
+    only for accounts with no registered face (e.g. legacy/demo
+    accounts predating this feature), same graceful-degradation pattern
+    used for voice."""
+    existing = store.get_transaction(body.id)
+    if not existing:
         raise HTTPException(status_code=404, detail={"error": "TRANSACTION_NOT_FOUND"})
-    return result
+    matched = body.matched
+    if body.faceDescriptor:
+        result = face_auth.authorize_by_face(existing.userId, body.faceDescriptor)
+        matched = result["authorized"]
+    return transaction_service.record_face_verification(body.id, matched)
 
 
 class SendBody(BaseModel):
@@ -219,7 +240,7 @@ def transactions_receipt(tx_id: str):
 
 # These /api/bmoni/users/{user_id}/* routes are granular testing utilities
 # over the raw BMONI API — the user_id you pass is the BMONI-side
-# bmoniUserId, not a NativePay customer id. In this app that identity
+# bmoniUserId, not an ElderPay customer id. In this app that identity
 # always belongs to the POS agent/platform (see AgentBmoniProfile),
 # never to an individual customer. Prefer /api/agent/bmoni-onboard below
 # for the actual one-time setup; these stay for testing individual steps.
@@ -467,6 +488,7 @@ class AccountRegisterBody(BaseModel):
     userId: str
     fullName: str
     address: str
+    email: Optional[str] = None
     language: str
 
 
@@ -474,7 +496,7 @@ class AccountRegisterBody(BaseModel):
 def accounts_register(body: AccountRegisterBody):
     if store.get_account(body.userId):
         raise HTTPException(status_code=409, detail={"error": "ACCOUNT_EXISTS"})
-    account = store.create_account(body.userId, body.fullName, body.language, body.address)
+    account = store.create_account(body.userId, body.fullName, body.language, body.address, body.email or None)
     return account
 
 
@@ -491,8 +513,8 @@ def accounts_search(name: str):
     """Fallback for customers who can't recall their card number (common
     among elderly users) — look up by the name given at registration
     instead. Returns only id/name, not full account details, since a
-    match here isn't itself an authorization decision — the voice/face
-    check after startSession still gates everything."""
+    match here isn't itself an authorization decision — the face check
+    after startSession still gates everything."""
     matches = store.find_accounts_by_name(name)
     return [{"id": a.id, "name": a.name} for a in matches]
 
@@ -523,3 +545,23 @@ def voice_authorize(body: VoiceprintBody):
 @app.get("/api/voice/status/{user_id}")
 def voice_status(user_id: str):
     return {"registered": voice_auth.has_voiceprint(user_id)}
+
+
+class FaceDescriptorBody(BaseModel):
+    userId: str
+    descriptor: list[float]
+
+
+@app.post("/api/face/register")
+def face_register(body: FaceDescriptorBody):
+    return face_auth.register_face(body.userId, body.descriptor)
+
+
+@app.post("/api/face/authorize")
+def face_authorize(body: FaceDescriptorBody):
+    return face_auth.authorize_by_face(body.userId, body.descriptor)
+
+
+@app.get("/api/face/status/{user_id}")
+def face_status(user_id: str):
+    return {"registered": face_auth.has_face(user_id)}

@@ -1,6 +1,6 @@
 import type {
-  Action, AccountProfile, AccountRegisterPayload, AgentBmoniProfile, Bank, HealthStatus, ParsedIntent, Receipt,
-  TransactionRecord, VoiceAuthorizeResult, VoiceStatus
+  Action, AccountProfile, AccountRegisterPayload, AgentBmoniProfile, Bank, FaceAuthorizeResult, FaceStatus,
+  HealthStatus, ParsedIntent, Receipt, TransactionRecord, VoiceAuthorizeResult, VoiceStatus
 } from "../types";
 
 export const API_BASE = (import.meta.env.VITE_API_BASE as string) || "http://localhost:4000";
@@ -76,11 +76,11 @@ export async function getBanks(): Promise<Bank[]> {
   return asJson(res);
 }
 
-export async function verifyFace(id: string, matched: boolean): Promise<TransactionRecord> {
+export async function verifyFace(id: string, options: { faceDescriptor?: number[]; matched?: boolean }): Promise<TransactionRecord> {
   const res = await fetch(`${API_BASE}/api/transactions/verify-face`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id, matched })
+    body: JSON.stringify({ id, faceDescriptor: options.faceDescriptor, matched: options.matched || false })
   });
   return asJson(res);
 }
@@ -124,6 +124,29 @@ export async function authorizeVoice(userId: string, featureVector: number[]): P
 
 export async function getVoiceStatus(userId: string): Promise<VoiceStatus> {
   const res = await fetch(`${API_BASE}/api/voice/status/${encodeURIComponent(userId)}`);
+  return asJson(res);
+}
+
+export async function registerFace(userId: string, descriptor: number[]): Promise<{ registered: boolean }> {
+  const res = await fetch(`${API_BASE}/api/face/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, descriptor })
+  });
+  return asJson(res);
+}
+
+export async function authorizeFace(userId: string, descriptor: number[]): Promise<FaceAuthorizeResult> {
+  const res = await fetch(`${API_BASE}/api/face/authorize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, descriptor })
+  });
+  return asJson(res);
+}
+
+export async function getFaceStatus(userId: string): Promise<FaceStatus> {
+  const res = await fetch(`${API_BASE}/api/face/status/${encodeURIComponent(userId)}`);
   return asJson(res);
 }
 

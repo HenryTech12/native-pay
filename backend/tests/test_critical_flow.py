@@ -1,7 +1,7 @@
 import pytest
 
 from app.models import AgentBmoniProfile
-from app.services import bmoni_service, paystack_service, store, voice_auth
+from app.services import bmoni_service, db, face_auth, paystack_service, store, voice_auth
 from app.services import transaction_service as ts
 
 FAKE_RESOLVED_NAMES = {
@@ -188,7 +188,7 @@ async def test_withdraw_uses_mock_transfer_when_agent_not_bmoni_onboarded():
     result = await ts.execute_transaction(tx.id)
 
     assert result.state == ts.STATES["TRANSACTION_SUCCESS"]
-    assert result.bmoniReference.startswith("NP-MOCK-")
+    assert result.bmoniReference.startswith("EP-MOCK-")
     assert store.get_account("not-onboarded-user").balance == before - 3000
 
 
@@ -304,3 +304,49 @@ def test_find_accounts_by_name_can_return_multiple_matches():
     matches = store.find_accounts_by_name("Ade")
     matched_ids = {a.id for a in matches}
     assert {"name-lookup-user-2", "name-lookup-user-3"}.issubset(matched_ids)
+
+
+def test_db_disabled_without_database_url():
+    # This test suite never sets DATABASE_URL, so persistence must stay
+    # off and every store fall back to in-memory — same as production
+    # would if the env var were simply left unset.
+    assert db.is_enabled() is False
+    assert db.is_ready() is False
+
+
+def test_db_normalize_url_converts_postgres_scheme():
+    assert db._normalize_url("postgres://u:p@host/db") == "postgresql://u:p@host/db"
+    assert db._normalize_url("postgresql://u:p@host/db") == "postgresql://u:p@host/db"
+
+
+def test_authorize_by_face_rejects_unregistered_user():
+    result = face_auth.authorize_by_face("face-test-user-unregistered", [0.0] * 128)
+    assert result["authorized"] is False
+    assert result["reason"] == "no_registered_face"
+
+
+def test_authorize_by_face_accepts_identical_descriptor():
+    descriptor = [float(i) / 128 for i in range(128)]
+    face_auth.register_face("face-test-user-1", descriptor)
+    result = face_auth.authorize_by_face("face-test-user-1", descriptor)
+    assert result["authorized"] is True
+    assert result["distance"] == 0.0
+
+
+def test_authorize_by_face_rejects_far_descriptor():
+    descriptor = [0.0] * 128
+    face_auth.register_face("face-test-user-2", descriptor)
+    far_descriptor = [1.0] * 128  # euclidean distance = sqrt(128) ~= 11.3, way above threshold
+    result = face_auth.authorize_by_face("face-test-user-2", far_descriptor)
+    assert result["authorized"] is False
+    assert result["distance"] > face_auth.THRESHOLD
+
+
+def test_authorize_by_face_accepts_close_descriptor_within_threshold():
+    descriptor = [0.0] * 128
+    face_auth.register_face("face-test-user-3", descriptor)
+    # Small perturbation across 128 dims -- euclidean distance stays small.
+    close_descriptor = [0.02] * 128  # distance = sqrt(128 * 0.02^2) ~= 0.226
+    result = face_auth.authorize_by_face("face-test-user-3", close_descriptor)
+    assert result["authorized"] is True
+    assert result["distance"] < face_auth.THRESHOLD

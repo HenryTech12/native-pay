@@ -60,7 +60,7 @@ export default function Pos() {
       <div style={s.card}>
         <header style={s.header}>
           <div style={s.topRow}>
-            <Link to="/" style={s.backLink}>← NativePay</Link>
+            <Link to="/" style={s.backLink}>← ElderPay</Link>
           </div>
           <h1 style={s.h1}>POS Agent View</h1>
           <p style={s.sub}>Track a customer's transaction status here. The agent never sees the customer's transcript, biometric data, or account credentials — only status.</p>
@@ -71,11 +71,18 @@ export default function Pos() {
           {statusError && <div style={s.hint}>Couldn't reach the backend — check it's running.</div>}
           {!statusError && !health && <div style={s.hint}>Loading...</div>}
           {health && (
-            <Card label="BMONI mode">
-              <span style={{ display: "inline-block", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 100, color: "#fff", background: health.bmoniMockMode ? "#C98A2C" : "#3D7A5C" }}>
-                {health.bmoniMockMode ? "Sandbox-mock" : "Live sandbox"}
-              </span>
-            </Card>
+            <>
+              <Card label="BMONI mode">
+                <span style={{ display: "inline-block", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 100, color: "#fff", background: health.bmoniMockMode ? "#C98A2C" : "#3D7A5C" }}>
+                  {health.bmoniMockMode ? "Sandbox-mock" : "Live sandbox"}
+                </span>
+              </Card>
+              <Card label="Account/face storage">
+                <span style={{ display: "inline-block", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 100, color: "#fff", background: health.dbConnected ? "#3D7A5C" : "#C98A2C" }}>
+                  {health.dbConnected ? "Postgres (persistent)" : "In-memory (lost on restart)"}
+                </span>
+              </Card>
+            </>
           )}
           {bmoni && (
             <>
@@ -96,7 +103,7 @@ export default function Pos() {
             <input
               value={txId}
               onChange={(e) => setTxId(e.target.value)}
-              placeholder="Transaction ID (e.g. NP-2026-123456)"
+              placeholder="Transaction ID (e.g. EP-2026-123456)"
               style={s.input}
             />
             <button onClick={lookup} style={{ ...s.btn, ...s.btnPrimary }}>Look up</button>
@@ -127,7 +134,7 @@ export default function Pos() {
 
 function Card({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={s.cardRow}>
+    <div style={s.cardRow} className="hover-card">
       <div style={s.cardLabel}>{label}</div>
       <div style={s.cardValue}>{children}</div>
     </div>
@@ -135,17 +142,17 @@ function Card({ label, children }: { label: string; children: React.ReactNode })
 }
 
 const s: Record<string, React.CSSProperties> = {
-  card: { width: "100%", maxWidth: 460, background: "#fff", borderRadius: 22, overflow: "hidden", boxShadow: "0 20px 60px rgba(19,28,59,0.18)", border: "1px solid var(--line)" },
-  header: { background: "var(--indigo)", color: "var(--paper)", padding: "20px 26px 16px" },
+  card: { width: "100%", maxWidth: 460, background: "#fff", borderRadius: 22, overflow: "hidden", boxShadow: "var(--shadow-lg)", border: "1px solid var(--line)" },
+  header: { background: "linear-gradient(135deg, var(--indigo) 0%, var(--indigo-deep) 100%)", color: "var(--paper)", padding: "22px 26px 18px" },
   topRow: { marginBottom: 10 },
   backLink: { color: "var(--gold-light)", fontSize: 12, textDecoration: "none" },
-  h1: { fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 21, margin: "0 0 4px" },
+  h1: { fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 22, margin: "0 0 4px" },
   sub: { margin: 0, fontSize: 12, color: "rgba(245,239,226,0.75)" },
   main: { padding: "24px 26px" },
   sectionLabel: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#8a8175", marginBottom: 10 },
   input: { flex: 1, padding: 12, borderRadius: 10, border: "1px solid var(--line)", fontSize: 14 },
-  btn: { padding: "12px 18px", borderRadius: 10, border: "none", fontWeight: 700, cursor: "pointer" },
-  btnPrimary: { background: "var(--indigo)", color: "#fff" },
+  btn: { padding: "12px 18px", borderRadius: 10, border: "none", fontWeight: 700 },
+  btnPrimary: { background: "linear-gradient(135deg, var(--indigo), var(--indigo-deep))", color: "#fff", boxShadow: "var(--shadow-sm)" },
   hint: { color: "#8a8175", fontSize: "13.5px", textAlign: "center", padding: "30px 0" },
   cardRow: { background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 14, padding: 18, marginBottom: 14 },
   cardLabel: { fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", color: "#8a8175", marginBottom: 4 },

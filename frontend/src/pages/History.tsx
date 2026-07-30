@@ -35,12 +35,12 @@ export default function History() {
         </header>
 
         <main style={s.main}>
-          {error && <div style={s.hint}>Couldn't reach the NativePay backend. Check it's running.</div>}
+          {error && <div style={s.hint}>Couldn't reach the ElderPay backend. Check it's running.</div>}
           {!error && txs === null && <div style={s.hint}>Loading...</div>}
           {txs && txs.length === 0 && <div style={s.hint}>No transactions yet — try the demo.</div>}
 
           {txs && txs.map((tx) => (
-            <div key={tx.id} style={s.txRow}>
+            <div key={tx.id} style={s.txRow} className="hover-card">
               <div>
                 <div style={s.txTitle}>
                   {actionLabel(tx.action)}{tx.amount ? ` ₦${tx.amount.toLocaleString()}` : ""}{tx.recipient ? `${tx.action === "airtime" ? " for " : " to "}${tx.recipient}` : ""}
@@ -57,11 +57,11 @@ export default function History() {
 }
 
 const s: Record<string, React.CSSProperties> = {
-  card: { width: "100%", maxWidth: 460, background: "#fff", borderRadius: 22, overflow: "hidden", boxShadow: "0 20px 60px rgba(19,28,59,0.18)", border: "1px solid var(--line)" },
-  header: { background: "var(--indigo)", color: "var(--paper)", padding: "20px 26px 16px" },
+  card: { width: "100%", maxWidth: 460, background: "#fff", borderRadius: 22, overflow: "hidden", boxShadow: "var(--shadow-lg)", border: "1px solid var(--line)" },
+  header: { background: "linear-gradient(135deg, var(--indigo) 0%, var(--indigo-deep) 100%)", color: "var(--paper)", padding: "22px 26px 18px" },
   topRow: { marginBottom: 10 },
   backLink: { color: "var(--gold-light)", fontSize: 12, textDecoration: "none" },
-  h1: { fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 21, margin: 0 },
+  h1: { fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 22, margin: 0 },
   main: { padding: "24px 26px" },
   hint: { color: "#8a8175", fontSize: "13.5px", textAlign: "center", padding: "30px 0" },
   txRow: { background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 14, padding: 16, marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" },
