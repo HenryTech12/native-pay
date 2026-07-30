@@ -478,6 +478,7 @@ class AccountRegisterBody(BaseModel):
     userId: str
     fullName: str
     address: str
+    email: str
     language: str
 
 
@@ -485,7 +486,7 @@ class AccountRegisterBody(BaseModel):
 def accounts_register(body: AccountRegisterBody):
     if store.get_account(body.userId):
         raise HTTPException(status_code=409, detail={"error": "ACCOUNT_EXISTS"})
-    account = store.create_account(body.userId, body.fullName, body.language, body.address)
+    account = store.create_account(body.userId, body.fullName, body.language, body.address, body.email)
     return account
 
 
@@ -502,8 +503,8 @@ def accounts_search(name: str):
     """Fallback for customers who can't recall their card number (common
     among elderly users) — look up by the name given at registration
     instead. Returns only id/name, not full account details, since a
-    match here isn't itself an authorization decision — the voice/face
-    check after startSession still gates everything."""
+    match here isn't itself an authorization decision — the face check
+    after startSession still gates everything."""
     matches = store.find_accounts_by_name(name)
     return [{"id": a.id, "name": a.name} for a in matches]
 
