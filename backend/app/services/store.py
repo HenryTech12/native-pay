@@ -1,7 +1,11 @@
 """
-In-memory store for the hackathon demo — deliberately not a real DB.
-Every other module talks only to these functions, never to storage directly,
-so swapping this for real persistence later doesn't touch calling code.
+Account storage: Postgres-backed when DATABASE_URL is set (see db.py),
+in-memory dicts otherwise — every other module talks only to these
+functions, never to storage directly, so callers never need to know
+which mode is active. Transactions stay in-memory either way; they're
+session-scoped by nature, not the durability concern real persistence
+was added for (losing a registered account or captured face on restart
+was).
 """
 
 import random
@@ -9,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from app.models import Account, AgentBmoniProfile, Recipient, TransactionRecord
+from app.services import db
 
 accounts: dict[str, Account] = {
     "mama-aisha": Account(
@@ -64,11 +69,17 @@ def _normalize_card(card_number: str) -> str:
     return card_number.replace(" ", "").replace("-", "")
 
 
+def _card_number_taken(normalized: str) -> bool:
+    if db.is_ready():
+        return db.get_account_by_card(normalized) is not None
+    return normalized in accounts_by_card
+
+
 def _generate_card_number() -> str:
     while True:
         digits = "".join(str(random.randint(0, 9)) for _ in range(12))
         normalized = "5060" + digits
-        if normalized not in accounts_by_card:
+        if not _card_number_taken(normalized):
             return " ".join(normalized[i:i + 4] for i in range(0, 16, 4))
 
 
@@ -85,16 +96,23 @@ def create_account(
         email=email,
         cardNumber=card_number,
     )
-    accounts[user_id] = account
-    accounts_by_card[_normalize_card(card_number)] = user_id
+    if db.is_ready():
+        db.create_account(account)
+    else:
+        accounts[user_id] = account
+        accounts_by_card[_normalize_card(card_number)] = user_id
     return account
 
 
 def get_account(user_id: str) -> Optional[Account]:
+    if db.is_ready():
+        return db.get_account(user_id)
     return accounts.get(user_id)
 
 
 def adjust_balance(user_id: str, delta: int) -> Optional[Account]:
+    if db.is_ready():
+        return db.adjust_balance(user_id, delta)
     account = accounts.get(user_id)
     if not account:
         return None
@@ -114,7 +132,10 @@ def update_agent_bmoni_profile(**patch) -> AgentBmoniProfile:
 
 
 def get_account_by_card(card_number: str) -> Optional[Account]:
-    user_id = accounts_by_card.get(_normalize_card(card_number))
+    normalized = _normalize_card(card_number)
+    if db.is_ready():
+        return db.get_account_by_card(normalized)
+    user_id = accounts_by_card.get(normalized)
     return accounts.get(user_id) if user_id else None
 
 
@@ -126,6 +147,8 @@ def find_accounts_by_name(name: str) -> list[Account]:
     query = name.strip().lower()
     if not query:
         return []
+    if db.is_ready():
+        return db.find_accounts_by_name(query)
     return [a for a in accounts.values() if query in a.name.lower()]
 
 

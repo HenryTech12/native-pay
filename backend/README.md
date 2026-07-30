@@ -1,6 +1,6 @@
 # NativePay Backend
 
-FastAPI service backing the NativePay frontend: speech-to-text + intent parsing, the transaction state machine, voice-based auth, and account enrollment. In-memory storage, sandbox-mode BMONI — built for the NITHUB Innovation Fair Hackathon 2026, not production.
+FastAPI service backing the NativePay frontend: speech-to-text + intent parsing, the transaction state machine, face-based auth, and account enrollment. Storage is in-memory unless `DATABASE_URL` is set (Postgres); BMONI runs in sandbox mode — built for the NITHUB Innovation Fair Hackathon 2026, not production.
 
 ## Setup
 ```bash
@@ -18,7 +18,7 @@ python -m pytest tests/ -v
 ```
 (Run as `python -m pytest`, not bare `pytest` — the module needs the repo root on `sys.path`.)
 
-9 cases in `tests/test_critical_flow.py`: invalid amount, unknown recipient, low-confidence clarification, blocked out-of-order execution, the confirm→face-verify→send→success happy path, idempotency, and cancellation.
+34 cases in `tests/test_critical_flow.py`: invalid amount, unknown recipient, low-confidence clarification, blocked out-of-order execution, the confirm→face-verify→send→success happy path, idempotency, cancellation, name lookup, and face/voice auth.
 
 ## API reference
 
@@ -83,7 +83,7 @@ The routes below are granular per-step testing utilities over the raw BMONI API 
 There's no BMONI endpoint for arbitrary P2P "send" or an NGN-only deposit (only card/crypto deposit exist), so this app's send/deposit/airtime actions keep using its own balance bookkeeping — matching the quick-start doc's note that sandbox wallets are funded manually by BMONI staff, not via API.
 
 ### Health
-`/api/health` — `{ok, demoMode, bmoniMockMode}`
+`/api/health` — `{ok, demoMode, bmoniMockMode, dbConnected}`
 
 ## Structure
 ```
@@ -96,9 +96,11 @@ app/
     paystack_service.py       Real bank account name-enquiry (recipient resolution)
     bmoni_service.py           Real BMONI sandbox integration (mock fallback)
     transaction_service.py     State machine, server-side validation
-    voice_auth.py              MFCC cosine-similarity voice pre-check
+    face_auth.py               Face descriptor storage + Euclidean-distance match (the real auth gate)
+    voice_auth.py              MFCC cosine-similarity voice pre-check (not wired into the active flow — see Notes)
+    db.py                      Optional Postgres persistence for accounts/face/voice data (DATABASE_URL)
     languages.py                Fixed-phrase translations
-    store.py                    In-memory demo data (accounts, recipients, transactions)
+    store.py                    Account/transaction storage — Postgres-backed via db.py when configured, in-memory otherwise
 tests/
   test_critical_flow.py        pytest
 ```
@@ -109,6 +111,6 @@ tests/
 - BMONI calls use `httpx.AsyncClient` against the real sandbox (`x-api-key` auth, no `/v1` appended to the base URL) once `BMONI_API_KEY`/`BMONI_OWNER_PRIVATE_KEY` are set; `bmoniMockMode` in `/api/health` reflects that. The self-custodied wallet's owner-proof challenge is signed with `eth_account` (EIP-191), and Nigeria bank withdrawals are signed with EIP-712 typed data — both since this backend has no Flutter/React Native SDK access. P2P send and NGN deposit have no corresponding BMONI endpoint, so those stay on this app's own balance bookkeeping.
 - Pydantic (`models.py`) validates request bodies — malformed shapes get a 422 automatically.
 - CORS is wide open (`allow_origins=["*"]`) for hackathon simplicity — tighten before this goes beyond a demo.
-- `voice_auth.py` is a heuristic pre-check (cosine similarity over MFCC vectors), not trained speaker-verification. Face capture is the real authorization gate for a transaction by default. As a deliberate friction/security trade-off, a transaction can skip its mandatory face check if the *same recording* used for the spoken command matches the stored voiceprint above a stricter threshold than login (`TRANSACTION_VOICE_MATCH_THRESHOLD`, default 0.92 vs. login's 0.85) — set via `POST /api/transactions/confirm`'s optional `voiceFeatureVector`. Every transaction records which method actually verified it (`verificationMethod: "face" | "voice"`), so this is never silently misrepresented as a face check.
-- Storage (`store.py`) is process-memory only — restarting the server clears every account, voiceprint, and transaction.
+- Face capture (`face_auth.py`) is the mandatory authorization gate for every transaction and for login when a stored face descriptor exists for that account — no PIN, no password. `voice_auth.py` (MFCC cosine similarity, not trained speaker-verification) still exists and is still tested, including a stricter transaction-time path that *can* skip the mandatory face check (`POST /api/transactions/confirm`'s optional `voiceFeatureVector`, `TRANSACTION_VOICE_MATCH_THRESHOLD`), but the current frontend never sends that field — voice auth is parked for a later phase, not deleted. Every transaction still records which method actually verified it (`verificationMethod: "face" | "voice"`).
+- Storage: `store.py`/`face_auth.py`/`voice_auth.py` write to Postgres when `DATABASE_URL` is set (`db.py` creates the schema and seeds the demo account on startup); otherwise everything lives in process memory and restarting the server clears every account, face/voice data, and transaction. If `DATABASE_URL` is set but unreachable at startup, it logs the failure and falls back to in-memory rather than crashing.
 - Supported `action` values: `send`, `withdraw`, `deposit`, `airtime`, `balance` (`bill` is defined in the type but not implemented anywhere — treat it as unsupported). Send/withdraw/airtime debit the account's balance and require an amount that doesn't exceed it (`INSUFFICIENT_FUNDS` otherwise); deposit credits it. `airtime` uses `recipient` to hold the phone number being topped up, not a contact name — it isn't checked against the recipient book the way `send` is.

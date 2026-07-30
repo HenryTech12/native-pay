@@ -71,11 +71,18 @@ export default function Pos() {
           {statusError && <div style={s.hint}>Couldn't reach the backend — check it's running.</div>}
           {!statusError && !health && <div style={s.hint}>Loading...</div>}
           {health && (
-            <Card label="BMONI mode">
-              <span style={{ display: "inline-block", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 100, color: "#fff", background: health.bmoniMockMode ? "#C98A2C" : "#3D7A5C" }}>
-                {health.bmoniMockMode ? "Sandbox-mock" : "Live sandbox"}
-              </span>
-            </Card>
+            <>
+              <Card label="BMONI mode">
+                <span style={{ display: "inline-block", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 100, color: "#fff", background: health.bmoniMockMode ? "#C98A2C" : "#3D7A5C" }}>
+                  {health.bmoniMockMode ? "Sandbox-mock" : "Live sandbox"}
+                </span>
+              </Card>
+              <Card label="Account/face storage">
+                <span style={{ display: "inline-block", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 100, color: "#fff", background: health.dbConnected ? "#3D7A5C" : "#C98A2C" }}>
+                  {health.dbConnected ? "Postgres (persistent)" : "In-memory (lost on restart)"}
+                </span>
+              </Card>
+            </>
           )}
           {bmoni && (
             <>

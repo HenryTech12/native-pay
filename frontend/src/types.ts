@@ -107,6 +107,7 @@ export interface HealthStatus {
   ok: boolean;
   demoMode: boolean;
   bmoniMockMode: boolean;
+  dbConnected: boolean;
 }
 
 export interface AgentBmoniProfile {
