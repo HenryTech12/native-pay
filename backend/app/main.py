@@ -256,6 +256,17 @@ def bmoni_generate_owner_wallet():
     return bmoni_service.generate_owner_wallet()
 
 
+@app.get("/api/bmoni/owner-address")
+def bmoni_owner_address():
+    """Public address derived from the currently configured
+    BMONI_OWNER_PRIVATE_KEY — diagnostic only, never exposes the key
+    itself. Compare against a wallet's registered owner address (from
+    GET /api/bmoni/users/{user_id}/wallets) to catch a mismatch between
+    the key this deployment currently signs with and the key a given
+    wallet was actually created with."""
+    return bmoni_service.get_owner_address()
+
+
 class BmoniCreateUserBody(BaseModel):
     firstName: str
     email: str
@@ -407,6 +418,21 @@ class BmoniInitiateWithdrawalBody(BaseModel):
     fromAmount: str
 
 
+@app.post("/api/bmoni/users/{user_id}/withdraw-nigeria/initiate-only")
+async def bmoni_initiate_withdrawal_only(user_id: str, body: BmoniInitiateWithdrawalBody):
+    """Debug-only: creates the offramp proposal but does not sign or
+    submit it, so the raw signPayload can be inspected directly — the
+    full round trip lives at /withdraw-nigeria below. Doesn't move any
+    money; a proposal left unsigned just stays pending."""
+    try:
+        return await bmoni_service.initiate_nigeria_withdrawal(
+            user_id, body.sourceSmartWalletId, body.bankAccountId, body.fromAmount
+        )
+    except Exception as err:
+        logger.error("bmoni_initiate_withdrawal_only failed: %s", err, exc_info=True)
+        raise HTTPException(status_code=502, detail={"error": "BMONI_API_ERROR", "message": str(err)})
+
+
 @app.post("/api/bmoni/users/{user_id}/withdraw-nigeria")
 async def bmoni_initiate_withdrawal(user_id: str, body: BmoniInitiateWithdrawalBody):
     """Initiates the offramp proposal, signs the returned EIP-712 payload
@@ -474,6 +500,25 @@ async def agent_bmoni_onboard(body: AgentBmoniOnboardBody):
 @app.get("/api/agent/bmoni-status")
 def agent_bmoni_status():
     return store.get_agent_bmoni_profile()
+
+
+class AgentBmoniRestoreBody(BaseModel):
+    bmoniUserId: str
+    bmoniSmartWalletId: str
+    bmoniWalletAddress: str
+    bmoniWithdrawalAccountId: Optional[str] = None
+    bmoniOnboarded: bool = True
+
+
+@app.post("/api/agent/bmoni-restore")
+def agent_bmoni_restore(body: AgentBmoniRestoreBody):
+    """Manually re-point this app's local record of the agent's BMONI
+    identity at a known-good one — recovery path for when that record
+    was lost locally (e.g. an in-memory profile wiped by a process
+    restart before persistence was added) even though the identity
+    still legitimately exists and is funded on BMONI's own side. Does
+    not call BMONI's API; only corrects this app's own bookkeeping."""
+    return store.update_agent_bmoni_profile(**body.model_dump())
 
 
 @app.get("/api/accounts/{account_id}/balance")

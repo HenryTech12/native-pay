@@ -85,6 +85,16 @@ def _owner_account() -> Account:
     return Account.from_key(OWNER_PRIVATE_KEY)
 
 
+def get_owner_address() -> dict:
+    """Public address only, safe to expose — lets us confirm the owner key
+    currently configured on this deployment is the same one a given
+    wallet was actually created with, without ever revealing the private
+    key itself."""
+    if not OWNER_PRIVATE_KEY:
+        return {"configured": False, "ownerAddress": None}
+    return {"configured": True, "ownerAddress": _owner_account().address}
+
+
 async def list_users(page: int = 1, limit: int = 100) -> dict:
     if MOCK_MODE:
         await asyncio.sleep(0.1)
@@ -417,6 +427,13 @@ async def get_account_balance(account_id: str) -> dict:
 
 
 def generate_receipt(tx: TransactionRecord) -> dict:
+    """Labels the receipt by what actually happened to this transaction,
+    not by whether BMONI is configured globally — "send"/"deposit"/
+    "airtime" always settle on this app's own ledger (see create_transfer's
+    docstring), so their reference is always the local EP-MOCK- one even
+    when real BMONI withdrawals are live. Checking the reference itself
+    avoids a receipt claiming "sandbox-live" next to an EP-MOCK- reference."""
+    is_real = bool(tx.bmoniReference) and not tx.bmoniReference.startswith("EP-MOCK-")
     return {
         "transactionId": tx.id,
         "type": tx.action,
@@ -425,5 +442,5 @@ def generate_receipt(tx: TransactionRecord) -> dict:
         "reference": tx.bmoniReference,
         "status": tx.state,
         "date": tx.createdAt,
-        "environment": "sandbox-mock" if MOCK_MODE else "sandbox-live",
+        "environment": "sandbox-live" if is_real else "sandbox-mock",
     }
