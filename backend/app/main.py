@@ -418,6 +418,21 @@ class BmoniInitiateWithdrawalBody(BaseModel):
     fromAmount: str
 
 
+@app.post("/api/bmoni/users/{user_id}/withdraw-nigeria/initiate-only")
+async def bmoni_initiate_withdrawal_only(user_id: str, body: BmoniInitiateWithdrawalBody):
+    """Debug-only: creates the offramp proposal but does not sign or
+    submit it, so the raw signPayload can be inspected directly — the
+    full round trip lives at /withdraw-nigeria below. Doesn't move any
+    money; a proposal left unsigned just stays pending."""
+    try:
+        return await bmoni_service.initiate_nigeria_withdrawal(
+            user_id, body.sourceSmartWalletId, body.bankAccountId, body.fromAmount
+        )
+    except Exception as err:
+        logger.error("bmoni_initiate_withdrawal_only failed: %s", err, exc_info=True)
+        raise HTTPException(status_code=502, detail={"error": "BMONI_API_ERROR", "message": str(err)})
+
+
 @app.post("/api/bmoni/users/{user_id}/withdraw-nigeria")
 async def bmoni_initiate_withdrawal(user_id: str, body: BmoniInitiateWithdrawalBody):
     """Initiates the offramp proposal, signs the returned EIP-712 payload
