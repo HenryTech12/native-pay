@@ -1,7 +1,7 @@
 import pytest
 
 from app.models import AgentBmoniProfile
-from app.services import bmoni_service, face_auth, paystack_service, store, voice_auth
+from app.services import bmoni_service, db, face_auth, paystack_service, store, voice_auth
 from app.services import transaction_service as ts
 
 FAKE_RESOLVED_NAMES = {
@@ -304,6 +304,19 @@ def test_find_accounts_by_name_can_return_multiple_matches():
     matches = store.find_accounts_by_name("Ade")
     matched_ids = {a.id for a in matches}
     assert {"name-lookup-user-2", "name-lookup-user-3"}.issubset(matched_ids)
+
+
+def test_db_disabled_without_database_url():
+    # This test suite never sets DATABASE_URL, so persistence must stay
+    # off and every store fall back to in-memory — same as production
+    # would if the env var were simply left unset.
+    assert db.is_enabled() is False
+    assert db.is_ready() is False
+
+
+def test_db_normalize_url_converts_postgres_scheme():
+    assert db._normalize_url("postgres://u:p@host/db") == "postgresql://u:p@host/db"
+    assert db._normalize_url("postgresql://u:p@host/db") == "postgresql://u:p@host/db"
 
 
 def test_authorize_by_face_rejects_unregistered_user():

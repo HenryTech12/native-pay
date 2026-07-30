@@ -8,3 +8,4 @@ pydantic==2.9.2
 pytest==8.3.3
 pytest-asyncio==0.24.0
 eth-account==0.13.7
+psycopg2-binary==2.9.9

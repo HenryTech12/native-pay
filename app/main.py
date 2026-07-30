@@ -9,7 +9,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from app.services import bmoni_service, face_auth, groq_service, paystack_service, store, transaction_service, voice_auth, yarngpt_service
+from app.services import bmoni_service, db, face_auth, groq_service, paystack_service, store, transaction_service, voice_auth, yarngpt_service
 from app.services.languages import supported_languages
 from app.services.transaction_service import STATES
 
@@ -25,9 +25,19 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+def on_startup():
+    db.init_schema()  # no-op if DATABASE_URL isn't set; falls back to in-memory storage on failure
+
+
 @app.get("/api/health")
 def health():
-    return {"ok": True, "demoMode": True, "bmoniMockMode": bmoni_service.is_mock_mode()}
+    return {
+        "ok": True,
+        "demoMode": True,
+        "bmoniMockMode": bmoni_service.is_mock_mode(),
+        "dbConnected": db.is_ready(),
+    }
 
 
 @app.get("/api/languages")
