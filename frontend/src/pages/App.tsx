@@ -4,9 +4,11 @@ import {
   voiceProcess, confirmCreate, confirmAdvance, cancelTransaction,
   verifyFace, sendTransaction, getReceipt, getBalance,
   authorizeVoice, getVoiceStatus, getAccount, getAccountByCard,
-  resolveRecipientByAccount, getBanks, searchAccountsByName
+  resolveRecipientByAccount, getBanks, searchAccountsByName,
+  authorizeFace, getFaceStatus
 } from "../lib/api";
 import { recordAudio, blobToMfccVector } from "../lib/audio";
+import { captureFaceDescriptor, loadFaceModels } from "../lib/faceAuth";
 import { generateChallenge } from "../lib/challenge";
 import { phrase, speak, LANGUAGES } from "../lib/phrases";
 import DeviceFrame from "../components/DeviceFrame";
@@ -99,6 +101,9 @@ export default function App() {
   const [nameLookupError, setNameLookupError] = useState("");
   const [nameLookupBusy, setNameLookupBusy] = useState(false);
 
+  const [faceRegistered, setFaceRegistered] = useState(false);
+  const [faceStatus, setFaceStatus] = useState("");
+
   const recorderRef = useRef<{ stop: () => void; result: Promise<Blob> } | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const voiceVectorRef = useRef<number[] | null>(null);
@@ -110,10 +115,15 @@ export default function App() {
   }, [step, tx?.needsClarification]);
 
   useEffect(() => {
-    if ((step === "face" || step === "faceAuth") && videoRef.current) {
-      navigator.mediaDevices.getUserMedia({ video: true })
-        .then((stream) => { if (videoRef.current) videoRef.current.srcObject = stream; })
-        .catch(() => {});
+    if (step === "face" || step === "faceAuth") {
+      setFaceStatus("");
+      loadFaceModels().catch(() => {});
+      getFaceStatus(userId).then((s) => setFaceRegistered(s.registered)).catch(() => setFaceRegistered(false));
+      if (videoRef.current) {
+        navigator.mediaDevices.getUserMedia({ video: true })
+          .then((stream) => { if (videoRef.current) videoRef.current.srcObject = stream; })
+          .catch(() => setFaceStatus("Camera access is needed for face verification."));
+      }
     }
     return () => {
       if (videoRef.current?.srcObject) {
@@ -295,6 +305,23 @@ export default function App() {
     setStep("authFailed");
   }
 
+  async function captureAndAuthFace() {
+    if (!videoRef.current) return;
+    setFaceStatus("Looking for your face...");
+    const descriptor = await captureFaceDescriptor(videoRef.current);
+    if (!descriptor) {
+      setFaceStatus("Couldn't find a face — look straight at the camera and try again.");
+      return;
+    }
+    try {
+      const result = await authorizeFace(userId, descriptor);
+      setFaceStatus("");
+      await onAuthFaceResult(result.authorized);
+    } catch {
+      setFaceStatus("Couldn't reach the backend — try again.");
+    }
+  }
+
   async function toggleListenRecording() {
     if (!isRecording) {
       setIsRecording(true);
@@ -402,20 +429,32 @@ export default function App() {
     setStep("face");
   }
 
-  async function onFaceResult(matched: boolean) {
+  async function onFaceResult(matched: boolean, descriptor?: number[]) {
     if (!tx) return;
     if (videoRef.current?.srcObject) {
       (videoRef.current.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
     }
-    const verified = await verifyFace(tx.id, matched);
+    const verified = await verifyFace(tx.id, descriptor ? { faceDescriptor: descriptor } : { matched });
     setTx(verified);
 
-    if (!matched) {
+    if (verified.state !== "FACE_VERIFIED") {
       setErrorCode("FACE_VERIFICATION_FAILED");
       setStep("error");
       return;
     }
     await finalizeTransaction(verified.id);
+  }
+
+  async function captureAndVerifyFace() {
+    if (!videoRef.current || !tx) return;
+    setFaceStatus("Looking for your face...");
+    const descriptor = await captureFaceDescriptor(videoRef.current);
+    if (!descriptor) {
+      setFaceStatus("Couldn't find a face — look straight at the camera and try again.");
+      return;
+    }
+    setFaceStatus("");
+    await onFaceResult(true, descriptor);
   }
 
   function downloadReceipt() {
@@ -548,11 +587,21 @@ export default function App() {
           {step === "faceAuth" && (
             <div style={s.faceStage}>
               <video ref={videoRef} autoPlay playsInline muted style={s.video} />
-              <div style={s.mockNote}>Camera capture is real. Match/no-match is simulated for the demo — swap in a real verification provider before production use.</div>
-              <div style={{ ...s.actionRow, width: "100%" }}>
-                <button style={{ ...s.btn, ...s.btnGhost }} onClick={() => onAuthFaceResult(false)}>Simulate: no match</button>
-                <button style={{ ...s.btn, ...s.btnGold }} onClick={() => onAuthFaceResult(true)}>Simulate: match ✓</button>
-              </div>
+              {faceRegistered ? (
+                <>
+                  <div style={s.hint}>Look at the camera, then tap to verify.</div>
+                  <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} onClick={captureAndAuthFace}>Verify my face</button>
+                  <div style={s.hint}>{faceStatus}</div>
+                </>
+              ) : (
+                <>
+                  <div style={s.mockNote}>No face on file for this demo account. Match/no-match is simulated here — swap in a real verification provider before production use.</div>
+                  <div style={{ ...s.actionRow, width: "100%" }}>
+                    <button style={{ ...s.btn, ...s.btnGhost }} onClick={() => onAuthFaceResult(false)}>Simulate: no match</button>
+                    <button style={{ ...s.btn, ...s.btnGold }} onClick={() => onAuthFaceResult(true)}>Simulate: match ✓</button>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -652,11 +701,21 @@ export default function App() {
           {step === "face" && (
             <div style={s.faceStage}>
               <video ref={videoRef} autoPlay playsInline muted style={s.video} />
-              <div style={s.mockNote}>Camera capture is real. Match/no-match is simulated for the demo — swap in a real verification provider before production use.</div>
-              <div style={{ ...s.actionRow, width: "100%" }}>
-                <button style={{ ...s.btn, ...s.btnGhost }} onClick={() => onFaceResult(false)}>Simulate: no match</button>
-                <button style={{ ...s.btn, ...s.btnGold }} onClick={() => onFaceResult(true)}>Simulate: match ✓</button>
-              </div>
+              {faceRegistered ? (
+                <>
+                  <div style={s.hint}>Look at the camera, then tap to verify.</div>
+                  <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} onClick={captureAndVerifyFace}>Verify my face</button>
+                  <div style={s.hint}>{faceStatus}</div>
+                </>
+              ) : (
+                <>
+                  <div style={s.mockNote}>No face on file for this demo account. Match/no-match is simulated here — swap in a real verification provider before production use.</div>
+                  <div style={{ ...s.actionRow, width: "100%" }}>
+                    <button style={{ ...s.btn, ...s.btnGhost }} onClick={() => onFaceResult(false)}>Simulate: no match</button>
+                    <button style={{ ...s.btn, ...s.btnGold }} onClick={() => onFaceResult(true)}>Simulate: match ✓</button>
+                  </div>
+                </>
+              )}
             </div>
           )}
 

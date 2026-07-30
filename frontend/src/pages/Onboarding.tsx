@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { registerAccount, registerVoice, voiceProcess } from "../lib/api";
+import { registerAccount, registerFace, registerVoice, voiceProcess } from "../lib/api";
 import { recordAudio, blobToMfccVector } from "../lib/audio";
+import { captureFaceDescriptor, loadFaceModels } from "../lib/faceAuth";
 import { generateChallenge } from "../lib/challenge";
 import { phrase, speak, prefetchSpeech, LANGUAGES } from "../lib/phrases";
 import DeviceFrame from "../components/DeviceFrame";
 import SpeakingIndicator from "../components/SpeakingIndicator";
 import { useIsSpeaking } from "../lib/useIsSpeaking";
 
-type Step = "start" | "name" | "address" | "voiceprint" | "review" | "done";
+type Step = "start" | "name" | "address" | "voiceprint" | "face" | "review" | "done";
 
 function averageVectors(vectors: number[][]): number[] {
   const dim = vectors[0].length;
@@ -33,8 +34,10 @@ export default function Onboarding() {
   const [voiceRound, setVoiceRound] = useState(1);
   const [challenge, setChallenge] = useState<{ digits: string; spoken: string } | null>(null);
   const [cardNumber, setCardNumber] = useState("");
+  const [faceDescriptor, setFaceDescriptor] = useState<number[] | null>(null);
 
   const recorderRef = useRef<{ stop: () => void; result: Promise<Blob> } | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const lang = LANGUAGES[langIdx].code;
 
   useEffect(() => {
@@ -60,6 +63,20 @@ export default function Onboarding() {
       speak(phrase(lang, "askRepeatDigits", c.spoken), lang);
     }
   }, [step, voiceRound]);
+
+  useEffect(() => {
+    if (step === "face" && videoRef.current) {
+      loadFaceModels().catch(() => {});
+      navigator.mediaDevices.getUserMedia({ video: true })
+        .then((stream) => { if (videoRef.current) videoRef.current.srcObject = stream; })
+        .catch(() => setStatus("Camera access is needed to register your face."));
+    }
+    return () => {
+      if (videoRef.current?.srcObject) {
+        (videoRef.current.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, [step]);
 
   async function captureTranscript(onDone: (text: string) => void) {
     if (isRecording) { recorderRef.current?.stop(); return; }
@@ -95,8 +112,21 @@ export default function Onboarding() {
       setVoiceSamples(samples);
       setStatus("");
       if (voiceRound < 2) setVoiceRound(voiceRound + 1);
-      else setStep("review");
+      else setStep("face");
     });
+  }
+
+  async function captureFace() {
+    if (!videoRef.current) return;
+    setStatus("Looking for your face...");
+    const descriptor = await captureFaceDescriptor(videoRef.current);
+    if (!descriptor) {
+      setStatus("Couldn't find a face — look straight at the camera and try again.");
+      return;
+    }
+    setFaceDescriptor(descriptor);
+    setStatus("");
+    setStep("review");
   }
 
   async function submit() {
@@ -106,6 +136,7 @@ export default function Onboarding() {
       const account = await registerAccount({ userId, fullName, address, language: lang });
       setCardNumber(account.cardNumber || "");
       await registerVoice(userId, averageVectors(voiceSamples));
+      if (faceDescriptor) await registerFace(userId, faceDescriptor);
       await speak(phrase(lang, "enrollmentComplete"), lang);
       setStatus("");
       setStep("done");
@@ -125,6 +156,7 @@ export default function Onboarding() {
     name: ["Your name", "Say your full name — this becomes your account name."],
     address: ["Your address", "Say your home address."],
     voiceprint: [`Voice sample ${voiceRound} of 2`, "This is what NativePay recognizes you by next time."],
+    face: ["Face verification", "Look at the camera so we can recognize you at transaction time."],
     review: ["Review", "Check the details before we create your account."],
     done: ["You're in", "Head to the virtual POS to start using NativePay."]
   };
@@ -187,6 +219,15 @@ export default function Onboarding() {
             </div>
           )}
 
+          {step === "face" && (
+            <div style={s.micStage}>
+              <video ref={videoRef} autoPlay playsInline muted style={s.video} />
+              <div style={s.hint}>Look straight at the camera, then tap to capture.</div>
+              <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} onClick={captureFace}>Capture my face</button>
+              <div style={s.hint}>{status}</div>
+            </div>
+          )}
+
           {step === "review" && (
             <>
               <div style={s.reviewCard}>
@@ -195,8 +236,9 @@ export default function Onboarding() {
                 <Row label="Name" value={fullName} />
                 <Row label="Address" value={address} />
                 <Row label="Voice samples" value={`${voiceSamples.length} of 2 captured ✓`} />
+                <Row label="Face" value={faceDescriptor ? "Captured ✓" : "Not captured"} />
               </div>
-              <div style={s.mockNote}>Face verification happens live at the agent for each transaction — no photo is captured or stored during sign-up.</div>
+              <div style={s.mockNote}>Your face was captured just now as a numeric descriptor (not a photo) — this is what confirms it's you as the final check before a withdrawal or transfer goes through.</div>
               {submitError && <div style={s.errorCard}>{submitError}</div>}
               <button style={{ ...s.btn, ...s.btnPrimary, width: "100%", marginTop: 14 }} onClick={submit}>{status || "Create account"}</button>
             </>
@@ -251,6 +293,7 @@ const s: Record<string, React.CSSProperties> = {
   micBtn: { width: 88, height: 88, borderRadius: "50%", border: "none", background: "var(--gold)", color: "#fff", fontSize: 30, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 8px 24px rgba(201,138,44,0.35)" },
   micBtnRecording: { background: "var(--alert)" },
   hint: { fontSize: "12.5px", color: "#6b6357", textAlign: "center", maxWidth: 300 },
+  video: { width: 190, height: 190, borderRadius: "50%", objectFit: "cover", border: "4px solid var(--gold)", background: "var(--indigo-deep)" },
   transcript: { fontFamily: "Fraunces, serif", fontSize: "16.5px", textAlign: "center", color: "var(--indigo)", minHeight: 24, padding: "0 8px" },
   btn: { padding: 13, borderRadius: 12, border: "none", fontWeight: 700, fontSize: "14.5px", cursor: "pointer" },
   btnPrimary: { background: "var(--indigo)", color: "#fff" },

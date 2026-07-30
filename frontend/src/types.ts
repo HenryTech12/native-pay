@@ -85,6 +85,17 @@ export interface VoiceAuthorizeResult {
   reason?: string;
 }
 
+export interface FaceStatus {
+  registered: boolean;
+}
+
+export interface FaceAuthorizeResult {
+  authorized: boolean;
+  distance?: number;
+  threshold?: number;
+  reason?: string;
+}
+
 export interface Bank {
   name: string;
   code: string;
