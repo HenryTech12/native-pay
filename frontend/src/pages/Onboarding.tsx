@@ -126,7 +126,7 @@ export default function Onboarding() {
               <input style={s.input} value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="e.g. 08012345678" />
               <div style={s.langRow}>
                 {LANGUAGES.map((l, i) => (
-                  <div key={l.code + i} style={{ ...s.langChip, ...(i === langIdx ? s.langChipActive : {}) }} onClick={() => setLangIdx(i)}>{l.label}</div>
+                  <div className="clickable" key={l.code + i} style={{ ...s.langChip, ...(i === langIdx ? s.langChipActive : {}) }} onClick={() => setLangIdx(i)}>{l.label}</div>
                 ))}
               </div>
               <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} disabled={!userId.trim()} onClick={() => setStep("name")}>Continue</button>
@@ -216,26 +216,26 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 const s: Record<string, React.CSSProperties> = {
-  card: { width: "100%", maxWidth: 460, background: "#fff", borderRadius: 22, overflow: "hidden", boxShadow: "0 20px 60px rgba(19,28,59,0.18)", border: "1px solid var(--line)" },
-  header: { background: "var(--indigo)", color: "var(--paper)", padding: "20px 26px 16px" },
+  card: { width: "100%", maxWidth: 460, background: "#fff", borderRadius: 22, overflow: "hidden", boxShadow: "var(--shadow-lg)", border: "1px solid var(--line)" },
+  header: { background: "linear-gradient(135deg, var(--indigo) 0%, var(--indigo-deep) 100%)", color: "var(--paper)", padding: "22px 26px 18px" },
   topRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
   backLink: { color: "var(--gold-light)", fontSize: 12, textDecoration: "none" },
-  h1: { fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 21, margin: "0 0 4px" },
+  h1: { fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 22, margin: "0 0 4px" },
   sub: { margin: 0, fontSize: 12, color: "rgba(245,239,226,0.75)" },
   main: { padding: "24px 26px", minHeight: 340, display: "flex", flexDirection: "column", position: "relative" },
   speakingBlock: { position: "absolute", inset: 0, zIndex: 5, cursor: "not-allowed", background: "transparent" },
   label: { fontSize: 13, fontWeight: 600, color: "#5c5346", marginBottom: 6, display: "block" },
-  input: { width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--line)", fontSize: 15, marginBottom: 14 },
+  input: { width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--line)", fontSize: 15, marginBottom: 14, transition: "border-color 160ms var(--ease-out)" },
   langRow: { display: "flex", gap: 7, marginBottom: 20, flexWrap: "wrap" },
-  langChip: { border: "1px solid var(--line)", background: "#fff", padding: "6px 11px", borderRadius: 100, fontSize: 12, fontWeight: 600, cursor: "pointer" },
+  langChip: { border: "1px solid var(--line)", background: "#fff", padding: "6px 11px", borderRadius: 100, fontSize: 12, fontWeight: 600 },
   langChipActive: { background: "var(--indigo)", color: "#fff", borderColor: "var(--indigo)" },
-  linkText: { color: "var(--indigo)", fontWeight: 700, cursor: "pointer", textDecoration: "underline", fontSize: 12 },
+  linkText: { color: "var(--indigo)", fontWeight: 700, textDecoration: "underline", fontSize: 12 },
   micStage: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, gap: 14, padding: "4px 0" },
   hint: { fontSize: "12.5px", color: "#6b6357", textAlign: "center", maxWidth: 300, marginBottom: 8 },
-  video: { width: 190, height: 190, borderRadius: "50%", objectFit: "cover", border: "4px solid var(--gold)", background: "var(--indigo-deep)" },
-  btn: { padding: 13, borderRadius: 12, border: "none", fontWeight: 700, fontSize: "14.5px", cursor: "pointer" },
-  btnPrimary: { background: "var(--indigo)", color: "#fff" },
-  reviewCard: { background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 14, padding: 18 },
+  video: { width: 190, height: 190, borderRadius: "50%", objectFit: "cover", border: "4px solid var(--gold)", background: "var(--indigo-deep)", boxShadow: "var(--shadow-gold)" },
+  btn: { padding: 13, borderRadius: 12, border: "none", fontWeight: 700, fontSize: "14.5px" },
+  btnPrimary: { background: "linear-gradient(135deg, var(--indigo), var(--indigo-deep))", color: "#fff", boxShadow: "var(--shadow-sm)" },
+  reviewCard: { background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 14, padding: 18, animation: "fadeInUp 320ms var(--ease-out)" },
   reviewRow: { display: "flex", justifyContent: "space-between", fontSize: 13, padding: "6px 0", borderBottom: "1px dashed var(--line)" },
   reviewLabel: { color: "#8a8175" },
   reviewValue: { fontWeight: 600, color: "var(--charcoal)" },

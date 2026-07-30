@@ -479,7 +479,7 @@ export default function App() {
               )}
               <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} disabled={inserting || !loginQuery.trim()} onClick={onSubmitLogin}>{inserting ? "Looking up..." : "Continue"}</button>
               <div style={s.quickRow}>
-                <span style={s.quickBtn} onClick={() => setLoginQuery("Olawale Zainab")}>Demo customer: Olawale Zainab</span>
+                <span className="clickable" style={s.quickBtn} onClick={() => setLoginQuery("Olawale Zainab")}>Demo customer: Olawale Zainab</span>
               </div>
               <div style={s.hint}>New here? <Link to="/onboarding" style={{ color: "var(--indigo)", fontWeight: 700 }}>Onboard a customer</Link></div>
             </div>
@@ -519,7 +519,7 @@ export default function App() {
             <>
               <div style={s.langRow}>
                 {LANGUAGES.map((l, i) => (
-                  <div key={l.code + i} style={{ ...s.langChip, ...(i === langIdx ? s.langChipActive : {}) }} onClick={() => setLangIdx(i)}>{l.label}</div>
+                  <div className="clickable" key={l.code + i} style={{ ...s.langChip, ...(i === langIdx ? s.langChipActive : {}) }} onClick={() => setLangIdx(i)}>{l.label}</div>
                 ))}
               </div>
               <div style={s.micStage}>
@@ -527,11 +527,11 @@ export default function App() {
                 <div style={s.transcript}>{transcript || "\u00A0"}</div>
                 <div style={s.hint}>Tap and speak, e.g. "Send 10,000 to Adewale"</div>
                 <div style={s.quickRow}>
-                  <span style={s.quickBtn} onClick={() => quickDemo("send")}>Demo: Send ₦10,000</span>
-                  <span style={s.quickBtn} onClick={() => quickDemo("balance")}>Demo: Check balance</span>
-                  <span style={s.quickBtn} onClick={() => quickDemo("withdraw")}>Demo: Withdraw ₦5,000</span>
-                  <span style={s.quickBtn} onClick={() => quickDemo("deposit")}>Demo: Deposit ₦20,000</span>
-                  <span style={s.quickBtn} onClick={() => quickDemo("airtime")}>Demo: Buy ₦500 airtime</span>
+                  <span className="clickable" style={s.quickBtn} onClick={() => quickDemo("send")}>Demo: Send ₦10,000</span>
+                  <span className="clickable" style={s.quickBtn} onClick={() => quickDemo("balance")}>Demo: Check balance</span>
+                  <span className="clickable" style={s.quickBtn} onClick={() => quickDemo("withdraw")}>Demo: Withdraw ₦5,000</span>
+                  <span className="clickable" style={s.quickBtn} onClick={() => quickDemo("deposit")}>Demo: Deposit ₦20,000</span>
+                  <span className="clickable" style={s.quickBtn} onClick={() => quickDemo("airtime")}>Demo: Buy ₦500 airtime</span>
                 </div>
               </div>
             </>
@@ -550,6 +550,7 @@ export default function App() {
                 <div style={s.badgeRow}><span style={{ ...s.badge, ...s.badgeGold }}>Confidence {Math.round((tx.confidence || 0) * 100)}%</span></div>
               </div>
               <span
+                className="clickable"
                 style={s.linkText}
                 onClick={() => speak(confirmPhraseFor(LANGUAGES[langIdx].code, tx.action, tx.amount, tx.recipient), LANGUAGES[langIdx].code)}
               >🔊 Repeat prompt</span>
@@ -673,7 +674,7 @@ export default function App() {
         </main>
 
         <footer style={s.footer}>
-          <span style={s.resetLink} onClick={resetAll}>Start over</span>
+          <span className="clickable" style={s.resetLink} onClick={resetAll}>Start over</span>
           <span style={{ margin: "0 8px", color: "#c9c2b4" }}>·</span>
           <Link to="/history" style={s.resetLink}>History</Link>
         </footer>
@@ -683,57 +684,57 @@ export default function App() {
 }
 
 const s: Record<string, React.CSSProperties> = {
-  cardVisual: { width: "100%", aspectRatio: "1.586", maxHeight: 150, borderRadius: 16, background: "linear-gradient(135deg, #FF7A00 0%, #E85D00 100%)", padding: 18, display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: "0 10px 24px rgba(232,93,0,0.3)" },
+  cardVisual: { width: "100%", aspectRatio: "1.586", maxHeight: 150, borderRadius: 16, background: "linear-gradient(135deg, #FF8A1F 0%, #E85D00 55%, #C94800 100%)", padding: 18, display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: "0 14px 30px rgba(232,93,0,0.35), inset 0 1px 0 rgba(255,255,255,0.25)" },
   cardVisualInserting: { animation: "cardInsert 550ms ease-in forwards" },
   cardTopRow: { display: "flex", alignItems: "center", justifyContent: "space-between" },
   cardBrand: { fontSize: 18, fontWeight: 800, fontStyle: "italic", letterSpacing: "0.02em", color: "#fff" },
-  cardChip: { width: 34, height: 26, borderRadius: 5, background: "linear-gradient(135deg, var(--gold-light), var(--gold))" },
+  cardChip: { width: 34, height: 26, borderRadius: 5, background: "linear-gradient(135deg, var(--gold-light), var(--gold))", boxShadow: "0 2px 4px rgba(0,0,0,0.2)" },
   cardNumberDisplay: { fontFamily: "monospace", fontSize: 17, letterSpacing: "0.06em", color: "var(--paper)" },
   cardBottomRow: { display: "flex", justifyContent: "flex-end" },
   cardTypeLabel: { fontSize: 12, fontWeight: 700, letterSpacing: "0.08em", color: "rgba(255,255,255,0.85)" },
   cardErrorText: { color: "var(--alert)", fontSize: "12.5px", textAlign: "center" },
-  linkText: { color: "var(--indigo)", fontWeight: 700, cursor: "pointer", textDecoration: "underline" },
-  appCard: { width: "100%", maxWidth: 460, background: "#fff", borderRadius: 22, overflow: "hidden", boxShadow: "0 20px 60px rgba(19,28,59,0.18)", border: "1px solid var(--line)" },
-  header: { background: "var(--indigo)", color: "var(--paper)", padding: "20px 26px 16px", position: "relative", overflow: "hidden" },
-  topRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
+  linkText: { color: "var(--indigo)", fontWeight: 700, textDecoration: "underline" },
+  appCard: { width: "100%", maxWidth: 460, background: "#fff", borderRadius: 22, overflow: "hidden", boxShadow: "var(--shadow-lg)", border: "1px solid var(--line)" },
+  header: { background: "linear-gradient(135deg, var(--indigo) 0%, var(--indigo-deep) 100%)", color: "var(--paper)", padding: "22px 26px 18px", position: "relative", overflow: "hidden" },
+  topRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, position: "relative", zIndex: 1 },
   backLink: { color: "var(--gold-light)", fontSize: 12, textDecoration: "none" },
-  demoBadge: { fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", background: "var(--gold)", color: "#fff", padding: "4px 9px", borderRadius: 100 },
-  h1: { fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 21, margin: "0 0 4px" },
-  sub: { margin: 0, fontSize: 12, color: "rgba(245,239,226,0.75)" },
+  demoBadge: { fontSize: 10, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", background: "linear-gradient(135deg, var(--gold-light), var(--gold))", color: "#fff", padding: "4px 10px", borderRadius: 100, boxShadow: "0 2px 8px rgba(201,138,44,0.4)" },
+  h1: { fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 22, margin: "0 0 4px", position: "relative", zIndex: 1 },
+  sub: { margin: 0, fontSize: 12, color: "rgba(245,239,226,0.75)", position: "relative", zIndex: 1 },
   main: { padding: "24px 26px", minHeight: 360, display: "flex", flexDirection: "column", position: "relative" },
   speakingBlock: { position: "absolute", inset: 0, zIndex: 5, cursor: "not-allowed", background: "transparent" },
   label: { fontSize: 13, fontWeight: 600, color: "#5c5346", marginBottom: 6, display: "block" },
-  input: { width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--line)", fontSize: 15, marginBottom: 14 },
+  input: { width: "100%", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--line)", fontSize: 15, marginBottom: 14, transition: "border-color 160ms var(--ease-out), box-shadow 160ms var(--ease-out)" },
   micStage: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, gap: 14, padding: "4px 0" },
-  micBtn: { width: 88, height: 88, borderRadius: "50%", border: "none", background: "var(--gold)", color: "#fff", fontSize: 30, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 8px 24px rgba(201,138,44,0.35)" },
-  micBtnRecording: { background: "var(--alert)" },
+  micBtn: { width: 92, height: 92, borderRadius: "50%", border: "none", background: "linear-gradient(150deg, var(--gold-light), var(--gold))", color: "#fff", fontSize: 32, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "var(--shadow-gold)" },
+  micBtnRecording: { background: "linear-gradient(150deg, #d9564a, var(--alert))", animation: "micRing 1.4s ease-out infinite" },
   hint: { fontSize: "12.5px", color: "#6b6357", textAlign: "center", maxWidth: 290 },
   transcript: { fontFamily: "Fraunces, serif", fontSize: "16.5px", textAlign: "center", color: "var(--indigo)", minHeight: 24, padding: "0 8px" },
   quickRow: { display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap", justifyContent: "center" },
-  quickBtn: { border: "1px solid var(--line)", background: "#fff", padding: "7px 12px", borderRadius: 100, fontSize: 12, fontWeight: 600, cursor: "pointer" },
+  quickBtn: { border: "1px solid var(--line)", background: "#fff", padding: "7px 12px", borderRadius: 100, fontSize: 12, fontWeight: 600 },
   langRow: { display: "flex", gap: 7, marginBottom: 16, flexWrap: "wrap" },
-  langChip: { border: "1px solid var(--line)", background: "#fff", padding: "6px 11px", borderRadius: 100, fontSize: 12, fontWeight: 600, cursor: "pointer" },
+  langChip: { border: "1px solid var(--line)", background: "#fff", padding: "6px 11px", borderRadius: 100, fontSize: 12, fontWeight: 600 },
   langChipActive: { background: "var(--indigo)", color: "#fff", borderColor: "var(--indigo)" },
-  confirmCard: { background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 14, padding: 18, textAlign: "center" },
-  amount: { fontFamily: "Fraunces, serif", fontSize: 26, fontWeight: 700, color: "var(--indigo)", margin: "6px 0" },
+  confirmCard: { background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 14, padding: 20, textAlign: "center", animation: "fadeInUp 320ms var(--ease-out)" },
+  amount: { fontFamily: "Fraunces, serif", fontSize: 28, fontWeight: 800, color: "var(--indigo)", margin: "6px 0" },
   to: { fontSize: "13.5px", color: "#6b6357" },
   actionRow: { display: "flex", gap: 10, marginTop: 16 },
-  btn: { flex: 1, padding: 13, borderRadius: 12, border: "none", fontWeight: 700, fontSize: "14.5px", cursor: "pointer" },
-  btnPrimary: { background: "var(--indigo)", color: "#fff" },
+  btn: { flex: 1, padding: 13, borderRadius: 12, border: "none", fontWeight: 700, fontSize: "14.5px" },
+  btnPrimary: { background: "linear-gradient(135deg, var(--indigo), var(--indigo-deep))", color: "#fff", boxShadow: "var(--shadow-sm)" },
   btnGhost: { background: "#fff", color: "var(--charcoal)", border: "1px solid var(--line)" },
-  btnGold: { background: "var(--gold)", color: "#fff" },
+  btnGold: { background: "linear-gradient(135deg, var(--gold-light), var(--gold))", color: "#fff", boxShadow: "var(--shadow-gold)" },
   badgeRow: { display: "flex", gap: 6, justifyContent: "center", marginTop: 10, flexWrap: "wrap" },
   badge: { fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase", padding: "3px 8px", borderRadius: 100, background: "var(--indigo)", color: "var(--paper)" },
-  badgeGold: { background: "var(--gold)" },
-  errorCard: { background: "#fdf1ef", border: "1px solid #f0c7be", borderRadius: 14, padding: 18, textAlign: "center", color: "var(--alert)", fontSize: 14 },
-  video: { width: 190, height: 190, borderRadius: "50%", objectFit: "cover", border: "4px solid var(--gold)", background: "var(--indigo-deep)" },
+  badgeGold: { background: "linear-gradient(135deg, var(--gold-light), var(--gold))" },
+  errorCard: { background: "#fdf1ef", border: "1px solid #f0c7be", borderRadius: 14, padding: 18, textAlign: "center", color: "var(--alert)", fontSize: 14, animation: "fadeInUp 320ms var(--ease-out)" },
+  video: { width: 190, height: 190, borderRadius: "50%", objectFit: "cover", border: "4px solid var(--gold)", background: "var(--indigo-deep)", boxShadow: "var(--shadow-gold)" },
   faceStage: { display: "flex", flexDirection: "column", alignItems: "center", gap: 12, flex: 1, justifyContent: "center" },
   mockNote: { fontSize: "10.5px", color: "#a08a5f", background: "#fbf3e2", border: "1px dashed #d9b978", padding: "6px 10px", borderRadius: 8, textAlign: "center" },
   statusStage: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, flex: 1, textAlign: "center" },
   spinner: { width: 36, height: 36, borderRadius: "50%", border: "4px solid var(--line)", borderTopColor: "var(--gold)", animation: "spin .9s linear infinite" },
-  receipt: { background: "#fff", border: "1px solid var(--line)", borderRadius: 14, padding: 18 },
-  receiptH3: { fontFamily: "Fraunces, serif", margin: "0 0 12px", color: "var(--success)", fontSize: 17 },
+  receipt: { background: "#fff", border: "1px solid var(--line)", borderRadius: 14, padding: 18, animation: "popIn 420ms var(--ease-spring)" },
+  receiptH3: { fontFamily: "Fraunces, serif", margin: "0 0 12px", color: "var(--success)", fontSize: 18, fontWeight: 700 },
   receiptRow: { display: "flex", justifyContent: "space-between", fontSize: 13, padding: "6px 0", borderBottom: "1px dashed var(--line)" },
   footer: { padding: "12px 26px 18px", textAlign: "center" },
-  resetLink: { fontSize: 12, color: "#8a8175", cursor: "pointer", textDecoration: "underline" }
+  resetLink: { fontSize: 12, color: "#8a8175", textDecoration: "underline" }
 };

@@ -134,7 +134,7 @@ export default function Pos() {
 
 function Card({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={s.cardRow}>
+    <div style={s.cardRow} className="hover-card">
       <div style={s.cardLabel}>{label}</div>
       <div style={s.cardValue}>{children}</div>
     </div>
@@ -142,17 +142,17 @@ function Card({ label, children }: { label: string; children: React.ReactNode })
 }
 
 const s: Record<string, React.CSSProperties> = {
-  card: { width: "100%", maxWidth: 460, background: "#fff", borderRadius: 22, overflow: "hidden", boxShadow: "0 20px 60px rgba(19,28,59,0.18)", border: "1px solid var(--line)" },
-  header: { background: "var(--indigo)", color: "var(--paper)", padding: "20px 26px 16px" },
+  card: { width: "100%", maxWidth: 460, background: "#fff", borderRadius: 22, overflow: "hidden", boxShadow: "var(--shadow-lg)", border: "1px solid var(--line)" },
+  header: { background: "linear-gradient(135deg, var(--indigo) 0%, var(--indigo-deep) 100%)", color: "var(--paper)", padding: "22px 26px 18px" },
   topRow: { marginBottom: 10 },
   backLink: { color: "var(--gold-light)", fontSize: 12, textDecoration: "none" },
-  h1: { fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 21, margin: "0 0 4px" },
+  h1: { fontFamily: "Fraunces, serif", fontWeight: 700, fontSize: 22, margin: "0 0 4px" },
   sub: { margin: 0, fontSize: 12, color: "rgba(245,239,226,0.75)" },
   main: { padding: "24px 26px" },
   sectionLabel: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#8a8175", marginBottom: 10 },
   input: { flex: 1, padding: 12, borderRadius: 10, border: "1px solid var(--line)", fontSize: 14 },
-  btn: { padding: "12px 18px", borderRadius: 10, border: "none", fontWeight: 700, cursor: "pointer" },
-  btnPrimary: { background: "var(--indigo)", color: "#fff" },
+  btn: { padding: "12px 18px", borderRadius: 10, border: "none", fontWeight: 700 },
+  btnPrimary: { background: "linear-gradient(135deg, var(--indigo), var(--indigo-deep))", color: "#fff", boxShadow: "var(--shadow-sm)" },
   hint: { color: "#8a8175", fontSize: "13.5px", textAlign: "center", padding: "30px 0" },
   cardRow: { background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 14, padding: 18, marginBottom: 14 },
   cardLabel: { fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", color: "#8a8175", marginBottom: 4 },
