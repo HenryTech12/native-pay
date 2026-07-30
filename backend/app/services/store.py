@@ -72,7 +72,9 @@ def _generate_card_number() -> str:
             return " ".join(normalized[i:i + 4] for i in range(0, 16, 4))
 
 
-def create_account(user_id: str, name: str, preferred_language: str, address: Optional[str] = None) -> Account:
+def create_account(
+    user_id: str, name: str, preferred_language: str, address: Optional[str] = None, email: Optional[str] = None
+) -> Account:
     card_number = _generate_card_number()
     account = Account(
         id=user_id,
@@ -80,6 +82,7 @@ def create_account(user_id: str, name: str, preferred_language: str, address: Op
         preferredLanguage=preferred_language,
         balance=STARTING_BALANCE,
         address=address,
+        email=email,
         cardNumber=card_number,
     )
     accounts[user_id] = account

@@ -3,13 +3,12 @@ import { Link } from "react-router-dom";
 import {
   voiceProcess, confirmCreate, confirmAdvance, cancelTransaction,
   verifyFace, sendTransaction, getReceipt, getBalance,
-  authorizeVoice, getVoiceStatus, getAccount, getAccountByCard,
+  getAccount, getAccountByCard,
   resolveRecipientByAccount, getBanks, searchAccountsByName,
   authorizeFace, getFaceStatus
 } from "../lib/api";
-import { recordAudio, blobToMfccVector } from "../lib/audio";
+import { recordAudio } from "../lib/audio";
 import { captureFaceDescriptor, loadFaceModels } from "../lib/faceAuth";
-import { generateChallenge } from "../lib/challenge";
 import { phrase, speak, LANGUAGES } from "../lib/phrases";
 import DeviceFrame from "../components/DeviceFrame";
 import SpeakingIndicator from "../components/SpeakingIndicator";
@@ -17,7 +16,7 @@ import { useIsSpeaking } from "../lib/useIsSpeaking";
 import type { TransactionRecord, Receipt, Action, Bank } from "../types";
 
 type Step =
-  | "card" | "start" | "nameLookup" | "auth" | "faceAuth" | "authFailed"
+  | "card" | "start" | "nameLookup" | "faceAuth" | "authFailed"
   | "listen" | "confirm" | "clarify" | "error" | "face" | "processing" | "balance" | "receipt";
 
 function formatCardNumber(raw: string): string {
@@ -89,8 +88,6 @@ export default function App() {
   const [cardNumber, setCardNumber] = useState("");
   const [cardError, setCardError] = useState("");
   const [inserting, setInserting] = useState(false);
-  const [challenge, setChallenge] = useState<{ digits: string; spoken: string } | null>(null);
-  const [authStatus, setAuthStatus] = useState("");
   const [accountNumberInput, setAccountNumberInput] = useState("");
   const [bankCode, setBankCode] = useState("");
   const [banks, setBanks] = useState<Bank[]>([]);
@@ -106,7 +103,6 @@ export default function App() {
 
   const recorderRef = useRef<{ stop: () => void; result: Promise<Blob> } | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const voiceVectorRef = useRef<number[] | null>(null);
 
   useEffect(() => {
     if (step === "clarify" && tx?.needsClarification === "accountNumber" && banks.length === 0) {
@@ -135,26 +131,12 @@ export default function App() {
   function resetAll() {
     setTx(null); setReceipt(null); setTranscript(""); setBalance(null);
     setAccountNumberInput(""); setAccountNumberError(""); setBankCode("");
-    voiceVectorRef.current = null;
     setStep("listen");
   }
 
-  async function startSession(forUserId: string, forLang: string) {
-    setAuthStatus("");
-    try {
-      const { registered } = await getVoiceStatus(forUserId);
-      if (!registered) {
-        setStep("faceAuth");
-        return;
-      }
-    } catch {
-      setAuthStatus("Couldn't reach the backend — check it's running.");
-      return;
-    }
-    const c = generateChallenge(forLang);
-    setChallenge(c);
-    setStep("auth");
-    await speak(phrase(forLang, "askRepeatDigits", c.spoken), forLang);
+  function startSession(forUserId: string) {
+    setUserId(forUserId);
+    setStep("faceAuth");
   }
 
   async function onSubmitCard() {
@@ -175,10 +157,8 @@ export default function App() {
    * resolves the account's saved language and starts the session. */
   async function proceedWithAccount(accountId: string, preferredLanguage: string) {
     const idx = LANGUAGES.findIndex((l) => l.code === preferredLanguage);
-    const lang = idx >= 0 ? preferredLanguage : LANGUAGES[langIdx].code;
-    setUserId(accountId);
     if (idx >= 0) setLangIdx(idx);
-    await startSession(accountId, lang);
+    startSession(accountId);
   }
 
   async function onSubmitNameLookup() {
@@ -261,47 +241,22 @@ export default function App() {
     }
   }
 
-  async function toggleAuthRecording() {
-    if (isRecording) { recorderRef.current?.stop(); return; }
-    setIsRecording(true);
-    setAuthStatus("Listening... tap again to stop.");
-    const rec = await recordAudio();
-    recorderRef.current = rec;
-    rec.result.then(async (blob) => {
-      setIsRecording(false);
-      setAuthStatus("Checking your voice...");
-      const vector = await blobToMfccVector(blob);
-      if (!vector) { setAuthStatus("Couldn't hear that clearly — try again."); return; }
-      try {
-        const lang = LANGUAGES[langIdx].code;
-        const result = await authorizeVoice(userId, vector);
-        if (result.authorized) {
-          try {
-            const account = await getAccount(userId);
-            await speak(phrase(lang, "welcomeBack", account.name), lang);
-          } catch {
-            /* welcome message is a nicety — proceed either way */
-          }
-          setStep("listen");
-        } else {
-          await speak(phrase(lang, "voiceAuthStepUp"), lang);
-          setStep("faceAuth");
-        }
-      } catch {
-        setAuthStatus("Couldn't reach the backend — check it's running and try again.");
-      }
-    });
-  }
-
   async function onAuthFaceResult(matched: boolean) {
     if (videoRef.current?.srcObject) {
       (videoRef.current.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
     }
     if (matched) {
+      const lang = LANGUAGES[langIdx].code;
+      try {
+        const account = await getAccount(userId);
+        await speak(phrase(lang, "welcomeBack", account.name), lang);
+      } catch {
+        /* welcome message is a nicety — proceed either way */
+      }
       setStep("listen");
       return;
     }
-    await speak(phrase(LANGUAGES[langIdx].code, "voiceAuthFailed"), LANGUAGES[langIdx].code);
+    await speak(phrase(LANGUAGES[langIdx].code, "faceAuthFailed"), LANGUAGES[langIdx].code);
     setStep("authFailed");
   }
 
@@ -331,11 +286,7 @@ export default function App() {
         setIsRecording(false);
         try {
           const langCode = LANGUAGES[langIdx].code;
-          const [{ text, intent }, vector] = await Promise.all([
-            voiceProcess(blob, langCode),
-            blobToMfccVector(blob),
-          ]);
-          voiceVectorRef.current = vector;
+          const { text, intent } = await voiceProcess(blob, langCode);
           setTranscript(text);
           await handleIntent(intent);
         } catch {
@@ -415,17 +366,8 @@ export default function App() {
 
   async function onConfirm() {
     if (!tx) return;
-    const advanced = await confirmAdvance(tx.id, voiceVectorRef.current || undefined);
+    const advanced = await confirmAdvance(tx.id);
     setTx(advanced);
-
-    if (advanced.state === "FACE_VERIFIED") {
-      // The same recording used for the spoken command already cleared
-      // the stricter transaction-time voice match — face check skipped.
-      const lang = LANGUAGES[langIdx].code;
-      await speak(phrase(lang, "voiceVerifiedSkipFace"), lang);
-      await finalizeTransaction(advanced.id);
-      return;
-    }
     setStep("face");
   }
 
@@ -471,8 +413,7 @@ export default function App() {
     card: ["NativePay", "Insert your card to begin."],
     start: ["NativePay", "Enter your phone number and pick your language to begin."],
     nameLookup: ["Find your account", "No card number? We can look you up by name instead."],
-    auth: ["Verify it's you", "Repeat the numbers you hear."],
-    faceAuth: ["One more check", "A quick face check confirms it's you."],
+    faceAuth: ["Verify it's you", "A quick face check confirms it's you."],
     authFailed: ["Couldn't verify you", "Please speak with the agent for help."],
     listen: ["NativePay", "Tap and speak — or try a quick demo phrase."],
     confirm: ["Confirm", "Check the details before continuing."],
@@ -565,23 +506,13 @@ export default function App() {
                 ))}
               </div>
               <div style={s.micStage}>
-                <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} disabled={!userId.trim()} onClick={() => startSession(userId, LANGUAGES[langIdx].code)}>Continue</button>
+                <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} disabled={!userId.trim()} onClick={() => startSession(userId)}>Continue</button>
                 <div style={s.hint}>
                   <span style={s.linkText} onClick={() => setStep("card")}>Insert card instead</span>
                   {" · "}New here? <Link to="/onboarding" style={{ color: "var(--indigo)", fontWeight: 700 }}>Create an account</Link>
                 </div>
               </div>
             </>
-          )}
-
-          {step === "auth" && challenge && (
-            <div style={s.micStage}>
-              <div style={s.transcript}>{challenge.spoken}</div>
-              <div style={s.hint}>Listen, then tap and repeat these numbers back.</div>
-              <span style={s.linkText} onClick={() => speak(phrase(LANGUAGES[langIdx].code, "askRepeatDigits", challenge.spoken), LANGUAGES[langIdx].code)}>🔊 Repeat prompt</span>
-              <button style={{ ...s.micBtn, ...(isRecording ? s.micBtnRecording : {}) }} onClick={toggleAuthRecording}>🎤</button>
-              <div style={s.hint}>{authStatus}</div>
-            </div>
           )}
 
           {step === "faceAuth" && (
@@ -607,7 +538,7 @@ export default function App() {
 
           {step === "authFailed" && (
             <>
-              <div style={s.errorCard}>We couldn't verify it's you by voice or face. Please speak with the agent for help.</div>
+              <div style={s.errorCard}>We couldn't verify it's you by face. Please speak with the agent for help.</div>
               <div style={s.actionRow}>
                 <button style={{ ...s.btn, ...s.btnPrimary, flex: 1 }} onClick={() => setStep("card")}>Try again</button>
               </div>

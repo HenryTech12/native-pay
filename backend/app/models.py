@@ -53,6 +53,7 @@ class Account(BaseModel):
     preferredLanguage: str
     balance: int
     address: Optional[str] = None
+    email: Optional[str] = None
     cardNumber: Optional[str] = None
 
 

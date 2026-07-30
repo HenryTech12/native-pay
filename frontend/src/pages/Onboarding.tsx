@@ -1,22 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { registerAccount, registerFace, registerVoice, voiceProcess } from "../lib/api";
-import { recordAudio, blobToMfccVector } from "../lib/audio";
+import { registerAccount, registerFace } from "../lib/api";
 import { captureFaceDescriptor, loadFaceModels } from "../lib/faceAuth";
-import { generateChallenge } from "../lib/challenge";
 import { phrase, speak, prefetchSpeech, LANGUAGES } from "../lib/phrases";
 import DeviceFrame from "../components/DeviceFrame";
 import SpeakingIndicator from "../components/SpeakingIndicator";
 import { useIsSpeaking } from "../lib/useIsSpeaking";
 
-type Step = "start" | "name" | "address" | "voiceprint" | "face" | "review" | "done";
-
-function averageVectors(vectors: number[][]): number[] {
-  const dim = vectors[0].length;
-  const sum = new Array(dim).fill(0);
-  vectors.forEach((v) => v.forEach((val, i) => (sum[i] += val)));
-  return sum.map((v) => v / vectors.length);
-}
+type Step = "start" | "name" | "email" | "address" | "face" | "review" | "done";
 
 export default function Onboarding() {
   const navigate = useNavigate();
@@ -24,19 +15,15 @@ export default function Onboarding() {
   const [step, setStep] = useState<Step>("start");
   const [langIdx, setLangIdx] = useState(0);
   const [userId, setUserId] = useState("");
-  const [isRecording, setIsRecording] = useState(false);
   const [status, setStatus] = useState("");
   const [submitError, setSubmitError] = useState("");
 
   const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
-  const [voiceSamples, setVoiceSamples] = useState<number[][]>([]);
-  const [voiceRound, setVoiceRound] = useState(1);
-  const [challenge, setChallenge] = useState<{ digits: string; spoken: string } | null>(null);
   const [cardNumber, setCardNumber] = useState("");
   const [faceDescriptor, setFaceDescriptor] = useState<number[] | null>(null);
 
-  const recorderRef = useRef<{ stop: () => void; result: Promise<Blob> } | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const lang = LANGUAGES[langIdx].code;
 
@@ -51,18 +38,14 @@ export default function Onboarding() {
   useEffect(() => {
     if (step === "name") {
       speak(phrase(lang, "askFullName"), lang);
-      prefetchSpeech(phrase(lang, "askAddress"), lang); // next step, fetched one step ahead
+      prefetchSpeech(phrase(lang, "askEmail"), lang); // next step, fetched one step ahead
+    }
+    if (step === "email") {
+      speak(phrase(lang, "askEmail"), lang);
+      prefetchSpeech(phrase(lang, "askAddress"), lang);
     }
     if (step === "address") speak(phrase(lang, "askAddress"), lang);
   }, [step]);
-
-  useEffect(() => {
-    if (step === "voiceprint") {
-      const c = generateChallenge(lang);
-      setChallenge(c);
-      speak(phrase(lang, "askRepeatDigits", c.spoken), lang);
-    }
-  }, [step, voiceRound]);
 
   useEffect(() => {
     if (step === "face" && videoRef.current) {
@@ -77,44 +60,6 @@ export default function Onboarding() {
       }
     };
   }, [step]);
-
-  async function captureTranscript(onDone: (text: string) => void) {
-    if (isRecording) { recorderRef.current?.stop(); return; }
-    setIsRecording(true);
-    setStatus("Listening... tap again to stop.");
-    const rec = await recordAudio();
-    recorderRef.current = rec;
-    rec.result.then(async (blob) => {
-      setIsRecording(false);
-      setStatus("Transcribing...");
-      try {
-        const { text } = await voiceProcess(blob, lang);
-        setStatus("");
-        onDone(text);
-      } catch {
-        setStatus("Couldn't reach the backend — check it's running and try again.");
-      }
-    });
-  }
-
-  async function captureVoiceprintSample() {
-    if (isRecording) { recorderRef.current?.stop(); return; }
-    setIsRecording(true);
-    setStatus("Listening... tap again to stop.");
-    const rec = await recordAudio();
-    recorderRef.current = rec;
-    rec.result.then(async (blob) => {
-      setIsRecording(false);
-      setStatus("Processing your voice sample...");
-      const vector = await blobToMfccVector(blob);
-      if (!vector) { setStatus("Couldn't read that clip — try again."); return; }
-      const samples = [...voiceSamples, vector];
-      setVoiceSamples(samples);
-      setStatus("");
-      if (voiceRound < 2) setVoiceRound(voiceRound + 1);
-      else setStep("face");
-    });
-  }
 
   async function captureFace() {
     if (!videoRef.current) return;
@@ -133,9 +78,8 @@ export default function Onboarding() {
     setSubmitError("");
     setStatus("Creating your account...");
     try {
-      const account = await registerAccount({ userId, fullName, address, language: lang });
+      const account = await registerAccount({ userId, fullName, address, email, language: lang });
       setCardNumber(account.cardNumber || "");
-      await registerVoice(userId, averageVectors(voiceSamples));
       if (faceDescriptor) await registerFace(userId, faceDescriptor);
       await speak(phrase(lang, "enrollmentComplete"), lang);
       setStatus("");
@@ -153,9 +97,9 @@ export default function Onboarding() {
 
   const titles: Record<Step, [string, string]> = {
     start: ["Create your account", "Pick your language and a phone number to sign in with."],
-    name: ["Your name", "Say your full name — this becomes your account name."],
-    address: ["Your address", "Say your home address."],
-    voiceprint: [`Voice sample ${voiceRound} of 2`, "This is what NativePay recognizes you by next time."],
+    name: ["Customer's name", "Agent: enter the customer's full name — this becomes their account name."],
+    email: ["Customer's email", "Agent: enter the customer's email address."],
+    address: ["Customer's address", "Agent: enter the customer's home address."],
     face: ["Face verification", "Look at the camera so we can recognize you at transaction time."],
     review: ["Review", "Check the details before we create your account."],
     done: ["You're in", "Head to the virtual POS to start using NativePay."]
@@ -190,33 +134,30 @@ export default function Onboarding() {
           )}
 
           {step === "name" && (
-            <div style={s.micStage}>
+            <>
               <div style={s.hint}>{phrase(lang, "askFullName")}</div>
-              <span style={s.linkText} onClick={() => speak(phrase(lang, "askFullName"), lang)}>🔊 Repeat prompt</span>
-              <button style={{ ...s.micBtn, ...(isRecording ? s.micBtnRecording : {}) }} onClick={() => captureTranscript((text) => { setFullName(text); setStep("address"); })}>🎤</button>
-              <div style={s.transcript}>{fullName || " "}</div>
-              <div style={s.hint}>{status}</div>
-            </div>
+              <label style={s.label}>Full name</label>
+              <input style={s.input} value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="e.g. Ngozi Adeyemi" autoFocus />
+              <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} disabled={!fullName.trim()} onClick={() => setStep("email")}>Continue</button>
+            </>
+          )}
+
+          {step === "email" && (
+            <>
+              <div style={s.hint}>{phrase(lang, "askEmail")}</div>
+              <label style={s.label}>Email address</label>
+              <input style={s.input} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="e.g. ngozi@example.com" autoFocus />
+              <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} disabled={!email.trim()} onClick={() => setStep("address")}>Continue</button>
+            </>
           )}
 
           {step === "address" && (
-            <div style={s.micStage}>
+            <>
               <div style={s.hint}>{phrase(lang, "askAddress")}</div>
-              <span style={s.linkText} onClick={() => speak(phrase(lang, "askAddress"), lang)}>🔊 Repeat prompt</span>
-              <button style={{ ...s.micBtn, ...(isRecording ? s.micBtnRecording : {}) }} onClick={() => captureTranscript((text) => { setAddress(text); setStep("voiceprint"); })}>🎤</button>
-              <div style={s.transcript}>{address || " "}</div>
-              <div style={s.hint}>{status}</div>
-            </div>
-          )}
-
-          {step === "voiceprint" && challenge && (
-            <div style={s.micStage}>
-              <div style={s.transcript}>{challenge.spoken}</div>
-              <div style={s.hint}>Listen, then tap and repeat these numbers back.</div>
-              <span style={s.linkText} onClick={() => speak(phrase(lang, "askRepeatDigits", challenge.spoken), lang)}>🔊 Repeat prompt</span>
-              <button style={{ ...s.micBtn, ...(isRecording ? s.micBtnRecording : {}) }} onClick={captureVoiceprintSample}>🎤</button>
-              <div style={s.hint}>{status}</div>
-            </div>
+              <label style={s.label}>Home address</label>
+              <input style={s.input} value={address} onChange={(e) => setAddress(e.target.value)} placeholder="e.g. 12 Allen Avenue, Ikeja" autoFocus />
+              <button style={{ ...s.btn, ...s.btnPrimary, width: "100%" }} disabled={!address.trim()} onClick={() => setStep("face")}>Continue</button>
+            </>
           )}
 
           {step === "face" && (
@@ -234,8 +175,8 @@ export default function Onboarding() {
                 <Row label="Language" value={LANGUAGES[langIdx].label} />
                 <Row label="Phone number" value={userId} />
                 <Row label="Name" value={fullName} />
+                <Row label="Email" value={email} />
                 <Row label="Address" value={address} />
-                <Row label="Voice samples" value={`${voiceSamples.length} of 2 captured ✓`} />
                 <Row label="Face" value={faceDescriptor ? "Captured ✓" : "Not captured"} />
               </div>
               <div style={s.mockNote}>Your face was captured just now as a numeric descriptor (not a photo) — this is what confirms it's you as the final check before a withdrawal or transfer goes through.</div>
@@ -290,11 +231,8 @@ const s: Record<string, React.CSSProperties> = {
   langChipActive: { background: "var(--indigo)", color: "#fff", borderColor: "var(--indigo)" },
   linkText: { color: "var(--indigo)", fontWeight: 700, cursor: "pointer", textDecoration: "underline", fontSize: 12 },
   micStage: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", flex: 1, gap: 14, padding: "4px 0" },
-  micBtn: { width: 88, height: 88, borderRadius: "50%", border: "none", background: "var(--gold)", color: "#fff", fontSize: 30, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 8px 24px rgba(201,138,44,0.35)" },
-  micBtnRecording: { background: "var(--alert)" },
-  hint: { fontSize: "12.5px", color: "#6b6357", textAlign: "center", maxWidth: 300 },
+  hint: { fontSize: "12.5px", color: "#6b6357", textAlign: "center", maxWidth: 300, marginBottom: 8 },
   video: { width: 190, height: 190, borderRadius: "50%", objectFit: "cover", border: "4px solid var(--gold)", background: "var(--indigo-deep)" },
-  transcript: { fontFamily: "Fraunces, serif", fontSize: "16.5px", textAlign: "center", color: "var(--indigo)", minHeight: 24, padding: "0 8px" },
   btn: { padding: 13, borderRadius: 12, border: "none", fontWeight: 700, fontSize: "14.5px", cursor: "pointer" },
   btnPrimary: { background: "var(--indigo)", color: "#fff" },
   reviewCard: { background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 14, padding: 18 },

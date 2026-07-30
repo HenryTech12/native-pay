@@ -64,6 +64,7 @@ export interface AccountProfile {
   preferredLanguage: string;
   balance: number;
   address: string | null;
+  email: string | null;
   cardNumber: string | null;
 }
 
@@ -71,6 +72,7 @@ export interface AccountRegisterPayload {
   userId: string;
   fullName: string;
   address: string;
+  email: string;
   language: string;
 }
 
