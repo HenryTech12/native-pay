@@ -476,6 +476,25 @@ def agent_bmoni_status():
     return store.get_agent_bmoni_profile()
 
 
+class AgentBmoniRestoreBody(BaseModel):
+    bmoniUserId: str
+    bmoniSmartWalletId: str
+    bmoniWalletAddress: str
+    bmoniWithdrawalAccountId: Optional[str] = None
+    bmoniOnboarded: bool = True
+
+
+@app.post("/api/agent/bmoni-restore")
+def agent_bmoni_restore(body: AgentBmoniRestoreBody):
+    """Manually re-point this app's local record of the agent's BMONI
+    identity at a known-good one — recovery path for when that record
+    was lost locally (e.g. an in-memory profile wiped by a process
+    restart before persistence was added) even though the identity
+    still legitimately exists and is funded on BMONI's own side. Does
+    not call BMONI's API; only corrects this app's own bookkeeping."""
+    return store.update_agent_bmoni_profile(**body.model_dump())
+
+
 @app.get("/api/accounts/{account_id}/balance")
 def accounts_balance(account_id: str):
     balance = transaction_service.get_account_balance(account_id)

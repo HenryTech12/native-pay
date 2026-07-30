@@ -17,7 +17,7 @@ import os
 from contextlib import contextmanager
 from typing import Iterator, Optional
 
-from app.models import Account, TransactionRecord
+from app.models import Account, AgentBmoniProfile, TransactionRecord
 
 logger = logging.getLogger("nativepay.db")
 
@@ -58,6 +58,14 @@ CREATE TABLE IF NOT EXISTS transactions (
     bmoni_reference TEXT,
     error TEXT,
     needs_clarification TEXT
+);
+CREATE TABLE IF NOT EXISTS agent_bmoni_profile (
+    id INTEGER PRIMARY KEY DEFAULT 1,
+    bmoni_user_id TEXT,
+    bmoni_smart_wallet_id TEXT,
+    bmoni_wallet_address TEXT,
+    bmoni_withdrawal_account_id TEXT,
+    bmoni_onboarded BOOLEAN NOT NULL DEFAULT FALSE
 );
 """
 
@@ -267,3 +275,36 @@ def list_transactions(user_id: Optional[str] = None) -> list[TransactionRecord]:
             cur.execute(f"SELECT {_TX_COLUMNS} FROM transactions ORDER BY created_at DESC")
         rows = cur.fetchall()
     return [_row_to_transaction(r) for r in rows]
+
+
+_AGENT_COLUMNS = "bmoni_user_id, bmoni_smart_wallet_id, bmoni_wallet_address, bmoni_withdrawal_account_id, bmoni_onboarded"
+
+
+def get_agent_bmoni_profile() -> Optional[AgentBmoniProfile]:
+    """None means no row has ever been written — distinct from a real,
+    written-but-blank profile, so callers can tell "never onboarded" from
+    "this table hasn't been touched yet" if that distinction ever matters."""
+    with _cursor() as cur:
+        cur.execute(f"SELECT {_AGENT_COLUMNS} FROM agent_bmoni_profile WHERE id = 1")
+        row = cur.fetchone()
+    if not row:
+        return None
+    return AgentBmoniProfile(
+        bmoniUserId=row[0], bmoniSmartWalletId=row[1], bmoniWalletAddress=row[2],
+        bmoniWithdrawalAccountId=row[3], bmoniOnboarded=row[4],
+    )
+
+
+def update_agent_bmoni_profile(profile: AgentBmoniProfile) -> None:
+    with _cursor() as cur:
+        cur.execute(
+            f"""INSERT INTO agent_bmoni_profile (id, {_AGENT_COLUMNS}) VALUES (1, %s, %s, %s, %s, %s)
+               ON CONFLICT (id) DO UPDATE SET
+                 bmoni_user_id = EXCLUDED.bmoni_user_id,
+                 bmoni_smart_wallet_id = EXCLUDED.bmoni_smart_wallet_id,
+                 bmoni_wallet_address = EXCLUDED.bmoni_wallet_address,
+                 bmoni_withdrawal_account_id = EXCLUDED.bmoni_withdrawal_account_id,
+                 bmoni_onboarded = EXCLUDED.bmoni_onboarded""",
+            (profile.bmoniUserId, profile.bmoniSmartWalletId, profile.bmoniWalletAddress,
+             profile.bmoniWithdrawalAccountId, profile.bmoniOnboarded),
+        )

@@ -122,13 +122,19 @@ def adjust_balance(user_id: str, delta: int) -> Optional[Account]:
 
 
 def get_agent_bmoni_profile() -> AgentBmoniProfile:
+    if db.is_ready():
+        return db.get_agent_bmoni_profile() or AgentBmoniProfile()
     return agent_bmoni_profile
 
 
 def update_agent_bmoni_profile(**patch) -> AgentBmoniProfile:
     global agent_bmoni_profile
-    agent_bmoni_profile = agent_bmoni_profile.model_copy(update=patch)
-    return agent_bmoni_profile
+    updated = get_agent_bmoni_profile().model_copy(update=patch)
+    if db.is_ready():
+        db.update_agent_bmoni_profile(updated)
+    else:
+        agent_bmoni_profile = updated
+    return updated
 
 
 def get_account_by_card(card_number: str) -> Optional[Account]:
