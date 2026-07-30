@@ -22,13 +22,30 @@ const styles: Record<string, React.CSSProperties> = {
   receiptRow: { display: "flex", justifyContent: "space-between", padding: "4px 0" },
   ok: { color: "var(--gold-light)", fontWeight: 700 },
   section: { padding: "6vh 6vw 10vh", maxWidth: 1200, margin: "0 auto" },
+  sectionAlt: { padding: "8vh 6vw", background: "var(--indigo-deep)" },
+  sectionAltInner: { maxWidth: 1200, margin: "0 auto" },
   sectionHead: { maxWidth: 560, marginBottom: 44 },
   h2: { fontFamily: "Fraunces, serif", fontSize: 30, color: "var(--indigo)", marginBottom: 10 },
+  h2Light: { fontFamily: "Fraunces, serif", fontSize: 30, color: "var(--paper)", marginBottom: 10 },
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 22 },
   card: { background: "#fff", border: "1px solid var(--line)", borderRadius: 16, padding: 24 },
   cardNum: { fontFamily: "Fraunces, serif", fontSize: 13, color: "var(--gold)", fontWeight: 700, marginBottom: 10 },
   cardH3: { fontSize: "16.5px", marginBottom: 8, color: "var(--indigo)" },
   cardP: { fontSize: "13.5px", color: "#5c5346", lineHeight: 1.55 },
+  problemGrid: { display: "flex", gap: 40, flexWrap: "wrap", alignItems: "flex-start" },
+  statBlock: { flex: "1 1 340px", minWidth: 300, display: "flex", gap: 24, flexWrap: "wrap" },
+  stat: { flex: "1 1 140px" },
+  statNum: { fontFamily: "Fraunces, serif", fontSize: 40, fontWeight: 700, color: "var(--gold)", lineHeight: 1 },
+  statLabel: { fontSize: "12.5px", color: "#4a4238", marginTop: 8, lineHeight: 1.4 },
+  statSource: { fontSize: 11, color: "#8a8175", marginTop: 4 },
+  personaBlock: { flex: "1 1 340px", minWidth: 300, background: "#fff", border: "1px solid var(--line)", borderRadius: 16, padding: 26 },
+  personaQuote: { fontFamily: "Fraunces, serif", fontStyle: "italic", fontSize: 16, color: "var(--indigo)", lineHeight: 1.5, marginBottom: 10 },
+  personaAttr: { fontSize: 12, color: "#8a8175" },
+  trustGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 18, marginTop: 30 },
+  trustCard: { background: "rgba(245,239,226,0.06)", border: "1px solid rgba(245,239,226,0.15)", borderRadius: 14, padding: 20 },
+  trustH3: { fontSize: 14.5, color: "var(--gold-light)", fontWeight: 700, marginBottom: 6 },
+  trustP: { fontSize: 13, color: "rgba(245,239,226,0.75)", lineHeight: 1.5 },
+  honestyNote: { marginTop: 30, fontSize: 12.5, color: "rgba(245,239,226,0.55)", lineHeight: 1.6, maxWidth: 720 },
   footer: { padding: "5vh 6vw", textAlign: "center", color: "#8a8175", fontSize: 13, borderTop: "1px solid var(--line)" }
 };
 
@@ -55,10 +72,10 @@ export default function Landing() {
         <div style={styles.heroText}>
           <div style={styles.eyebrow}>NITHUB Innovation Fair 2026 · AI + BMONI</div>
           <h1 style={styles.h1}>Banking that speaks <span style={styles.em}>your</span> language.</h1>
-          <p style={styles.lede}>No apps to learn. No PINs to forget. Walk up to any participating POS agent, speak naturally in Yoruba, Hausa, Igbo, or Pidgin, and NativePay handles the rest — securely, through BMONI.</p>
+          <p style={styles.lede}>No apps to learn. No PINs to forget. Walk up to any participating POS agent, speak naturally in Yorùbá, Hausa, Igbo, or Pidgin, and NativePay handles the rest — securely, through BMONI.</p>
           <div style={styles.heroCtas}>
             <Link to="/app" style={styles.btnPrimary}>Start speaking</Link>
-            <a href="#features" style={styles.btnSecondary}>How it works</a>
+            <a href="#problem" style={styles.btnSecondary}>Why we built this</a>
           </div>
         </div>
         <div style={styles.heroDemo}>
@@ -71,6 +88,31 @@ export default function Landing() {
           </div>
         </div>
       </div>
+
+      <section style={styles.section} id="problem">
+        <div style={styles.sectionHead}>
+          <h2 style={styles.h2}>The problem isn't money. It's the interface.</h2>
+          <p style={{ color: "#4a4238", fontSize: 15, lineHeight: 1.6 }}>Nigeria's digital banking push has left a specific group behind — and it's not because they can't afford an account.</p>
+        </div>
+        <div style={styles.problemGrid}>
+          <div style={styles.statBlock}>
+            <div style={styles.stat}>
+              <div style={styles.statNum}>~36%</div>
+              <div style={styles.statLabel}>of Nigerian adults remain unbanked</div>
+              <div style={styles.statSource}>World Bank, via Techpoint Africa</div>
+            </div>
+            <div style={styles.stat}>
+              <div style={styles.statNum}>26%</div>
+              <div style={styles.statLabel}>of Nigerians are financially excluded — down from 32% in 2020, but still tens of millions of people</div>
+              <div style={styles.statSource}>EFInA Access to Finance survey, 2023</div>
+            </div>
+          </div>
+          <div style={styles.personaBlock}>
+            <div style={styles.personaQuote}>"Most elderly adults studied never adopted internet banking — they simply returned to traditional, in-person banking."</div>
+            <div style={styles.personaAttr}>Digital Inclusion and the Elderly: Internet Banking Use and Non-Use among Older Adults in Ekiti State, Nigeria — Covenant University Journal of Business and Social Sciences</div>
+          </div>
+        </div>
+      </section>
 
       <section style={styles.section} id="features">
         <div style={styles.sectionHead}>
@@ -87,6 +129,32 @@ export default function Landing() {
           ))}
         </div>
       </section>
+
+      <div style={styles.sectionAlt}>
+        <div style={styles.sectionAltInner}>
+          <h2 style={styles.h2Light}>Built on real infrastructure, not a mockup</h2>
+          <p style={{ color: "rgba(245,239,226,0.7)", fontSize: 15, lineHeight: 1.6, maxWidth: 560 }}>Every service below is a live integration — you can verify each one yourself from the POS agent view.</p>
+          <div style={styles.trustGrid}>
+            <div style={styles.trustCard}>
+              <div style={styles.trustH3}>Groq · Whisper</div>
+              <div style={styles.trustP}>Real speech-to-text transcription and LLM intent parsing, tuned for Nigerian languages and Naira amounts.</div>
+            </div>
+            <div style={styles.trustCard}>
+              <div style={styles.trustH3}>YarnGPT</div>
+              <div style={styles.trustP}>Nigerian-accented text-to-speech for every confirmation, balance, and success message the system speaks.</div>
+            </div>
+            <div style={styles.trustCard}>
+              <div style={styles.trustH3}>Paystack</div>
+              <div style={styles.trustP}>Real Nigerian bank-account name-enquiry, used to verify unrecognized send recipients before any transfer.</div>
+            </div>
+            <div style={styles.trustCard}>
+              <div style={styles.trustH3}>BMONI</div>
+              <div style={styles.trustP}>Real sandbox wallet — created, KYC'd, and NGN-rail-activated — settling real withdrawals through a signed on-chain proposal.</div>
+            </div>
+          </div>
+          <p style={styles.honestyNote}>We're upfront about the rest, too: face verification in this build is simulated, and voice-matching is a heuristic pre-check, not certified biometrics. Real money movement is always gated by the stronger check, and every transaction records exactly which one verified it.</p>
+        </div>
+      </div>
 
       <footer style={styles.footer}>NativePay — built for NITHUB Innovation Fair Hackathon 2026. Sandbox / test data only.</footer>
     </div>

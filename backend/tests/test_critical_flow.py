@@ -285,3 +285,22 @@ def test_authorize_for_transaction_respects_stricter_threshold(monkeypatch):
     txn_result = voice_auth.authorize_for_transaction("voice-test-user", skewed)
     assert login_result["authorized"] is True
     assert txn_result["authorized"] is False
+
+
+def test_find_accounts_by_name_matches_case_insensitively():
+    store.create_account("name-lookup-user-1", "Chidinma Okoro", "en")
+    matches = store.find_accounts_by_name("chidinma")
+    assert any(a.id == "name-lookup-user-1" for a in matches)
+
+
+def test_find_accounts_by_name_no_match_returns_empty():
+    matches = store.find_accounts_by_name("Someone Who Definitely Does Not Exist Zzyzx")
+    assert matches == []
+
+
+def test_find_accounts_by_name_can_return_multiple_matches():
+    store.create_account("name-lookup-user-2", "Ade Bello", "en")
+    store.create_account("name-lookup-user-3", "Ade Johnson", "en")
+    matches = store.find_accounts_by_name("Ade")
+    matched_ids = {a.id for a in matches}
+    assert {"name-lookup-user-2", "name-lookup-user-3"}.issubset(matched_ids)

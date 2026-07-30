@@ -486,6 +486,17 @@ def accounts_get_by_card(card_number: str):
     return account
 
 
+@app.get("/api/accounts/search")
+def accounts_search(name: str):
+    """Fallback for customers who can't recall their card number (common
+    among elderly users) — look up by the name given at registration
+    instead. Returns only id/name, not full account details, since a
+    match here isn't itself an authorization decision — the voice/face
+    check after startSession still gates everything."""
+    matches = store.find_accounts_by_name(name)
+    return [{"id": a.id, "name": a.name} for a in matches]
+
+
 @app.get("/api/accounts/{account_id}")
 def accounts_get(account_id: str):
     account = store.get_account(account_id)
