@@ -59,7 +59,33 @@ const styles: Record<string, React.CSSProperties> = {
   trustH3: { fontSize: 14.5, color: "var(--gold-light)", fontWeight: 700, marginBottom: 6 },
   trustP: { fontSize: 13, color: "rgba(245,239,226,0.75)", lineHeight: 1.5 },
   honestyNote: { marginTop: 30, fontSize: 12.5, color: "rgba(245,239,226,0.55)", lineHeight: 1.6, maxWidth: 720 },
-  footer: { padding: "5vh 6vw", textAlign: "center", color: "#8a8175", fontSize: 13, borderTop: "1px solid var(--line)", position: "relative", zIndex: 1 }
+  footer: { padding: "5vh 6vw", textAlign: "center", color: "#8a8175", fontSize: 13, borderTop: "1px solid var(--line)", position: "relative", zIndex: 1 },
+
+  originWrap: { background: "#fff", border: "1px solid var(--line)", borderRadius: 20, padding: "40px 44px", boxShadow: "var(--shadow-md)", position: "relative", overflow: "hidden" },
+  originQuoteMark: { position: "absolute", top: 8, left: 20, fontFamily: "Fraunces, serif", fontSize: 90, color: "rgba(201,138,44,0.1)", lineHeight: 1 },
+  originQuote: { fontFamily: "Fraunces, serif", fontWeight: 700, fontStyle: "italic", fontSize: "clamp(20px, 2.6vw, 28px)", color: "var(--indigo)", lineHeight: 1.4, maxWidth: 780, position: "relative" },
+  originSteps: { display: "flex", alignItems: "center", gap: 10, marginTop: 28, flexWrap: "wrap" },
+  originStep: { flex: "1 1 140px", minWidth: 120, background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 12, padding: "12px 16px", fontSize: 13, fontWeight: 700, color: "var(--indigo)", textAlign: "center" },
+  originStepLast: { background: "var(--gold)", color: "#fff", border: "none" },
+  originArrow: { color: "var(--gold)", fontSize: 18, flexShrink: 0 },
+
+  statGridFull: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 26, marginTop: 36 },
+
+  marketBars: { display: "flex", flexDirection: "column", gap: 18, marginTop: 8 },
+  marketRow: { display: "flex", alignItems: "center", gap: 18 },
+  marketLabel: { width: 56, fontSize: 13, fontWeight: 700, color: "var(--indigo)", flexShrink: 0 },
+  marketTrack: { flex: 1, height: 46, borderRadius: 10, background: "rgba(30,42,82,0.06)", position: "relative", overflow: "hidden" },
+  marketFill: { height: "100%", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "flex-end", padding: "0 18px", transition: "width 900ms var(--ease-out)" },
+  marketValue: { fontFamily: "Fraunces, serif", fontWeight: 800, fontSize: 20, color: "#fff" },
+  marketNote: { fontSize: 12, color: "#8a8175", lineHeight: 1.6, marginTop: 18, maxWidth: 780 },
+
+  impactChain: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 30 },
+  impactBox: { flex: "1 1 160px", minWidth: 140, background: "#fff", border: "1px solid var(--line)", borderRadius: 12, padding: "18px 16px", textAlign: "center", fontWeight: 700, color: "var(--indigo)", fontSize: 14.5 },
+  impactBoxLead: { background: "var(--indigo)", color: "#fff", border: "none" },
+  impactArrow: { color: "var(--gold)", fontSize: 18, flexShrink: 0 },
+  impactPills: { display: "flex", gap: 28, flexWrap: "wrap", marginTop: 30 },
+  impactPill: { display: "flex", alignItems: "center", gap: 10, fontSize: 14, fontWeight: 600, color: "var(--indigo)" },
+  impactDot: { width: 12, height: 12, borderRadius: "50%", background: "var(--gold)", flexShrink: 0 }
 };
 
 const features = [
@@ -75,6 +101,34 @@ const trust = [
   { icon: "🏦", title: "Paystack", body: "Real Nigerian bank-account name-enquiry, used to verify unrecognized send recipients before any transfer." },
   { icon: "🔐", title: "BMONI", body: "Real sandbox wallet — created, KYC'd, and NGN-rail-activated — settling real withdrawals through a signed on-chain proposal." }
 ];
+
+const extraStats = [
+  { target: 2, prefix: "", suffix: " in 5", label: "Nigerian adults have low digital literacy", source: "EFInA Access to Financial Services Survey, 2023" },
+  { target: 38, suffix: "%", label: "adult illiteracy rate nationwide", source: "EFInA Access to Financial Services Survey, 2023" },
+  { target: 53.9, suffix: "%", label: "of Nigerians depend on POS agents for everyday transactions", source: "EFInA Access to Financial Services Survey, 2023" },
+  { target: 25.85, prefix: "₦", suffix: "B", label: "lost to digital payment fraud", source: "NIBSS Digital Payment Fraud Report, 2025" }
+];
+
+const revenueStreams = [
+  { icon: "💳", title: "Transaction fees", body: "A small fee on each send, withdrawal, or airtime top-up processed through BMONI." },
+  { icon: "🤝", title: "Bank partnerships", body: "Licensed banks pay to reach previously unbanked and underserved customers through the same terminals they already trust." },
+  { icon: "🖥️", title: "POS integrations", body: "Agent networks pay for a voice-and-face layer that lets their existing hardware serve customers apps can't." },
+  { icon: "⭐", title: "Premium features", body: "Optional add-ons for banks and agents — analytics, priority support, multi-branch management." }
+];
+
+function MarketBar({ label, value, display, share }: { label: string; value: number; display: string; share: number }) {
+  const { ref, value: animated } = useCountUp(share, 1400);
+  return (
+    <div style={styles.marketRow}>
+      <div style={styles.marketLabel}>{label}</div>
+      <div style={styles.marketTrack} ref={ref}>
+        <div style={{ ...styles.marketFill, width: `${animated}%`, background: value === 100 ? "linear-gradient(90deg, rgba(30,42,82,0.35), var(--indigo))" : value >= 30 ? "linear-gradient(90deg, rgba(201,138,44,0.6), var(--gold))" : "linear-gradient(90deg, var(--gold), #b87c22)" }}>
+          <span style={styles.marketValue}>{display}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function StatNumber({ target, suffix, prefix }: { target: number; suffix?: string; prefix?: string }) {
   const { ref, value } = useCountUp(target);
@@ -123,6 +177,24 @@ export default function Landing() {
         </div>
       </div>
 
+      <section style={styles.section}>
+        <Reveal>
+          <div style={styles.originWrap}>
+            <div style={styles.originQuoteMark}>"</div>
+            <p style={styles.originQuote}>I built ElderPay because my grandmother lost ₦250,000 — not to a scam, but to confusion. She depended on a POS agent for every transaction, and one misunderstood instruction was all it took.</p>
+            <div style={styles.originSteps}>
+              <div style={styles.originStep}>POS dependency</div>
+              <span style={styles.originArrow}>→</span>
+              <div style={styles.originStep}>Confusion</div>
+              <span style={styles.originArrow}>→</span>
+              <div style={styles.originStep}>Loss</div>
+              <span style={styles.originArrow}>→</span>
+              <div style={{ ...styles.originStep, ...styles.originStepLast }}>ElderPay</div>
+            </div>
+          </div>
+        </Reveal>
+      </section>
+
       <section style={styles.section} id="problem">
         <Reveal>
           <div style={styles.sectionHead}>
@@ -153,6 +225,17 @@ export default function Landing() {
             </>
           </Reveal>
         </div>
+        <div style={styles.statGridFull}>
+          {extraStats.map((st, i) => (
+            <Reveal delay={i * 80} key={st.label}>
+              <div>
+                <StatNumber target={st.target} prefix={st.prefix} suffix={st.suffix} />
+                <div style={styles.statLabel}>{st.label}</div>
+                <div style={styles.statSource}>{st.source}</div>
+              </div>
+            </Reveal>
+          ))}
+        </div>
       </section>
 
       <section style={styles.section} id="features">
@@ -170,6 +253,45 @@ export default function Landing() {
                 <div style={styles.cardNum}>STEP {f.num}</div>
                 <h3 style={styles.cardH3}>{f.title}</h3>
                 <p style={styles.cardP}>{f.body}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+
+      <section style={styles.section}>
+        <Reveal>
+          <div style={styles.sectionHead}>
+            <h2 style={styles.h2}>Market opportunity</h2>
+            <p style={{ color: "#4a4238", fontSize: 15, lineHeight: 1.6 }}>Nigeria's mobile-connected adults, narrowed down to the ones ElderPay is actually built to reach first.</p>
+          </div>
+        </Reveal>
+        <Reveal delay={80}>
+          <div style={styles.marketBars}>
+            <MarketBar label="TAM" value={100} display="100M+" share={100} />
+            <MarketBar label="SAM" value={30} display="30M" share={55} />
+            <MarketBar label="SOM" value={2} display="2M" share={22} />
+          </div>
+        </Reveal>
+        <Reveal delay={140}>
+          <p style={styles.marketNote}>Methodology: TAM = Nigerian adults with mobile phone access. SAM = Digitally underserved adults (financially excluded + low digital literacy). SOM = Initial users reachable through bank and agent partnerships. Source: EFInA 2023, NBS, NCC.</p>
+        </Reveal>
+      </section>
+
+      <section style={styles.section} id="business-model">
+        <Reveal>
+          <div style={styles.sectionHead}>
+            <h2 style={styles.h2}>How ElderPay makes money</h2>
+            <p style={{ color: "#4a4238", fontSize: 15, lineHeight: 1.6 }}>A sustainable business layered on top of infrastructure that already exists.</p>
+          </div>
+        </Reveal>
+        <div style={styles.grid}>
+          {revenueStreams.map((r, i) => (
+            <Reveal delay={i * 90} key={r.title}>
+              <div style={styles.card} className="hover-card">
+                <span style={styles.cardIcon}>{r.icon}</span>
+                <h3 style={styles.cardH3}>{r.title}</h3>
+                <p style={styles.cardP}>{r.body}</p>
               </div>
             </Reveal>
           ))}
@@ -200,6 +322,33 @@ export default function Landing() {
           </Reveal>
         </div>
       </div>
+
+      <section style={styles.section}>
+        <Reveal>
+          <div style={styles.sectionHead}>
+            <h2 style={styles.h2}>Financial inclusion through voice</h2>
+            <p style={{ color: "#4a4238", fontSize: 15, lineHeight: 1.6 }}>Every party in the chain benefits, not just the customer at the center of it.</p>
+          </div>
+        </Reveal>
+        <Reveal delay={80}>
+          <div style={styles.impactChain}>
+            <div style={{ ...styles.impactBox, ...styles.impactBoxLead }}>Elderly</div>
+            <span style={styles.impactArrow}>→</span>
+            <div style={styles.impactBox}>POS Agents</div>
+            <span style={styles.impactArrow}>→</span>
+            <div style={styles.impactBox}>Banks</div>
+            <span style={styles.impactArrow}>→</span>
+            <div style={styles.impactBox}>Communities</div>
+          </div>
+        </Reveal>
+        <Reveal delay={140}>
+          <div style={styles.impactPills}>
+            <div style={styles.impactPill}><span style={styles.impactDot} />More access</div>
+            <div style={styles.impactPill}><span style={styles.impactDot} />Less fraud</div>
+            <div style={styles.impactPill}><span style={styles.impactDot} />More independence</div>
+          </div>
+        </Reveal>
+      </section>
 
       <footer style={styles.footer}>ElderPay — built for NITHUB Innovation Fair Hackathon 2026. Sandbox / test data only.</footer>
     </div>
