@@ -76,7 +76,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 export default function App() {
   const isSpeaking = useIsSpeaking();
   const [step, setStep] = useState<Step>("card");
-  const [userId, setUserId] = useState("mama-aisha");
+  const [userId, setUserId] = useState("");
   const [langIdx, setLangIdx] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState("");

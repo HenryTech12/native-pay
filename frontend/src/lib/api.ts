@@ -10,7 +10,10 @@ async function asJson<T>(res: Response): Promise<T> {
     let message = res.statusText;
     try {
       const body = await res.json();
-      message = body.message || body.error || message;
+      // FastAPI wraps HTTPException(detail=...) as {"detail": {...}} —
+      // every backend error lives one level deeper than a flat body.
+      const detail = body.detail && typeof body.detail === "object" ? body.detail : body;
+      message = detail.message || detail.error || (typeof body.detail === "string" ? body.detail : message);
     } catch {
       /* body wasn't JSON — keep statusText */
     }

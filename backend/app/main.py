@@ -109,8 +109,10 @@ class ConfirmBody(BaseModel):
 @app.post("/api/transactions/confirm")
 def transactions_confirm(body: ConfirmBody):
     if not body.id:
+        if not body.userId:
+            raise HTTPException(status_code=400, detail={"error": "USER_ID_REQUIRED"})
         evaluated = transaction_service.evaluate_intent(
-            user_id=body.userId or "mama-aisha",
+            user_id=body.userId,
             action=body.action or "unknown",
             amount=body.amount,
             recipient=body.recipient,
@@ -476,12 +478,10 @@ def agent_bmoni_status():
 
 @app.get("/api/accounts/{account_id}/balance")
 def accounts_balance(account_id: str):
-    try:
-        balance = transaction_service.get_account_balance(account_id)
-        return {"accountId": account_id, "balance": balance, "currency": "NGN"}
-    except Exception as err:
-        logger.error("accounts_balance failed: %s", err, exc_info=True)
-        raise HTTPException(status_code=500, detail={"error": "BMONI_API_ERROR", "message": str(err)})
+    balance = transaction_service.get_account_balance(account_id)
+    if balance is None:
+        raise HTTPException(status_code=404, detail={"error": "ACCOUNT_NOT_FOUND"})
+    return {"accountId": account_id, "balance": balance, "currency": "NGN"}
 
 
 class AccountRegisterBody(BaseModel):

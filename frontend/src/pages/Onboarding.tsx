@@ -86,7 +86,12 @@ export default function Onboarding() {
       setStep("done");
     } catch (err) {
       setStatus("");
-      setSubmitError(err instanceof Error ? err.message : "Couldn't reach the backend — check it's running and try again.");
+      const message = err instanceof Error ? err.message : "";
+      setSubmitError(
+        message === "ACCOUNT_EXISTS"
+          ? "That phone number is already registered — try logging in instead, or use a different number."
+          : message || "Couldn't reach the backend — check it's running and try again."
+      );
     }
   }
 
