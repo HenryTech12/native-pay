@@ -256,6 +256,17 @@ def bmoni_generate_owner_wallet():
     return bmoni_service.generate_owner_wallet()
 
 
+@app.get("/api/bmoni/owner-address")
+def bmoni_owner_address():
+    """Public address derived from the currently configured
+    BMONI_OWNER_PRIVATE_KEY — diagnostic only, never exposes the key
+    itself. Compare against a wallet's registered owner address (from
+    GET /api/bmoni/users/{user_id}/wallets) to catch a mismatch between
+    the key this deployment currently signs with and the key a given
+    wallet was actually created with."""
+    return bmoni_service.get_owner_address()
+
+
 class BmoniCreateUserBody(BaseModel):
     firstName: str
     email: str
