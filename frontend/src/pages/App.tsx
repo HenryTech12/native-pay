@@ -392,7 +392,7 @@ export default function App() {
         <header style={s.header}>
           <div style={s.topRow}>
             <Link to="/" style={s.backLink}>← NativePay</Link>
-            <span style={s.demoBadge}>Demo Mode</span>
+            <span style={s.demoBadge}>Hackathon Prototype</span>
           </div>
           <h1 style={s.h1}>{title}</h1>
           <p style={s.sub}>{sub}</p>
