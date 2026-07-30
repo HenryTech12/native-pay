@@ -306,6 +306,23 @@ def test_find_accounts_by_name_can_return_multiple_matches():
     assert {"name-lookup-user-2", "name-lookup-user-3"}.issubset(matched_ids)
 
 
+def test_get_account_balance_returns_own_balance_not_demo_account():
+    # Regression test: get_account_balance used to fall back to the
+    # seeded "mama-aisha" demo account's balance for any user_id it
+    # couldn't find in the in-memory dict — in DB-persisted mode that's
+    # every real account, since they never live in that dict. Every
+    # customer's balance check would silently show the demo account's
+    # number instead of their own.
+    store.create_account("balance-test-user", "Balance Tester", "en")
+    balance = ts.get_account_balance("balance-test-user")
+    assert balance == store.STARTING_BALANCE
+    assert balance != store.accounts["mama-aisha"].balance
+
+
+def test_get_account_balance_returns_none_for_unknown_user():
+    assert ts.get_account_balance("no-such-user-at-all") is None
+
+
 def test_db_disabled_without_database_url():
     # This test suite never sets DATABASE_URL, so persistence must stay
     # off and every store fall back to in-memory — same as production

@@ -196,5 +196,5 @@ async def _execute_real_nigeria_withdrawal(agent: AgentBmoniProfile, amount: int
 
 
 def get_account_balance(user_id: str) -> Optional[int]:
-    account = store.accounts.get(user_id) or store.accounts.get("mama-aisha")
+    account = store.get_account(user_id)
     return account.balance if account else None
